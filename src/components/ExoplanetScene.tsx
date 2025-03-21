@@ -64,6 +64,14 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
     planetRefs.current = system.planets.map(() => new THREE.Group());
   }
 
+  // Track elapsed time and pause state
+  const elapsedTimeRef = useRef(0);
+  const lastFrameTimeRef = useRef(0);
+  const isFirstFrameRef = useRef(true);
+  const lastCameraDistanceRef = useRef<number | null>(null);
+  const pausedAnglesRef = useRef<number[]>([]);
+  const wasPausedRef = useRef(false);
+
   // Create separate shader instances for each planet
   const planetShaders = useRef<THREE.ShaderMaterial[]>([]);
   if (planetShaders.current.length !== system.planets.length) {
@@ -119,30 +127,55 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
   }
   
   useFrame((state) => {
-    if (isPaused) return;
+    const currentTime = state.clock.getElapsedTime();
+    
+    // Initialize on first frame
+    if (isFirstFrameRef.current) {
+      lastFrameTimeRef.current = currentTime;
+      lastCameraDistanceRef.current = distanceToCamera;
+      isFirstFrameRef.current = false;
+      return;
+    }
+
+    // Reset paused angles when resuming from pause
+    if (wasPausedRef.current && !isPaused) {
+      pausedAnglesRef.current = [];
+    }
+    wasPausedRef.current = isPaused;
+
+    // Calculate delta time
+    const deltaTime = currentTime - lastFrameTimeRef.current;
+    lastFrameTimeRef.current = currentTime;
+
+    // Only update elapsed time when not paused
+    if (!isPaused) {
+      // Adjust elapsed time based on camera distance change to maintain orbital phase
+      if (lastCameraDistanceRef.current !== null) {
+        const speedRatio = Math.pow(lastCameraDistanceRef.current / distanceToCamera, 1.5);
+        elapsedTimeRef.current *= speedRatio;
+      }
+      elapsedTimeRef.current += deltaTime;
+      lastCameraDistanceRef.current = distanceToCamera;
+    }
     
     planetRefs.current.forEach((group, index) => {
       const planet = system.planets[index];
       const orbitRadius = (planet.pl_orbsmax || (index + 1)) / 206265;
       
-      // Log the actual values
-      console.log('Planet orbit:', {
-        name: planet.pl_name,
-        pl_orbsmax: planet.pl_orbsmax, // Original AU value
-        orbitRadius: orbitRadius,      // Converted to parsecs
-        currentPosition: {
-          x: group.position.x,
-          z: group.position.z
-        }
-      });
-      
-      // Adjust speed based on camera distance - slower when closer
-      const speedScale = Math.pow(30000 * distanceToCamera, 1.5) ;
-      
       // Use orbital period if available (in days), otherwise calculate from semi-major axis
       const orbitalPeriod = planet.pl_orbper ? planet.pl_orbper / 365 : Math.pow(orbitRadius, 1.5);
-      const orbitSpeed = (1 / orbitalPeriod) * speedScale;
-      const angle = state.clock.getElapsedTime() * orbitSpeed;
+      const orbitSpeed = (1 / orbitalPeriod) * Math.pow(30000 * distanceToCamera, 1.5);
+      
+      // Calculate the current angle only when not paused
+      let angle;
+      if (isPaused) {
+        angle = pausedAnglesRef.current[index];
+      } else {
+        const currentAngle = elapsedTimeRef.current * orbitSpeed;
+        angle = currentAngle;
+        // Store the current angle when pausing
+        pausedAnglesRef.current[index] = currentAngle;
+      }
       
       // Calculate planet position with eccentricity
       const eccentricity = planet.pl_orbeccen || 0;
@@ -185,6 +218,10 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
 
   // Add state for hovered planet
   const [hoveredPlanet, setHoveredPlanet] = useState<number | null>(null);
+  const planetTextRefs = useRef<THREE.Group[]>([]);
+  if (planetTextRefs.current.length !== system.planets.length) {
+    planetTextRefs.current = system.planets.map(() => new THREE.Group());
+  }
 
   // Add console.log to debug hover state
   console.log('Hover state:', {
@@ -193,19 +230,31 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
     visible
   });
 
+  useFrame((state) => {
+    // Update text labels
+    planetTextRefs.current.forEach((group, index) => {
+      if (group) {
+        group.quaternion.copy(camera.quaternion);
+        const baseScale = 0.04;
+        const scaleFactor = distanceToCamera * baseScale;
+        group.scale.setScalar(scaleFactor);
+      }
+    });
+  });
+
   return (
     <>
       {system.planets.map((planet, index) => {
         const orbitRadius = (planet.pl_orbsmax || (index + 1)) * orbitScaleFactor;
         
         // Calculate planet size based on distance
-        let planetRadius;
+        let planetRadius: number | undefined;
         if (showDetailedPlanets) {
           // Use real planet sizes when very close
-          planetRadius = planetSizes[index] * 5000; // Scale up for visibility
+          planetRadius = planetSizes[index] * 50000; // Scale up for visibility
         } else if (showSimplePlanets) {
           // Use fixed-size dots at medium distance
-          planetRadius = 0.005 * distanceToCamera ; // Fixed size for visibility
+          planetRadius = 0.005 * distanceToCamera; // Fixed size for visibility
         }
         
         const vertices = new Float32Array(
@@ -231,36 +280,77 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
               </bufferGeometry>
               <lineBasicMaterial color="#666666" opacity={0.8} transparent />
             </line>
-            
-            {(showDetailedPlanets || showSimplePlanets) && (
-              <group ref={(el) => { if (el) planetRefs.current[index] = el; }}>
-                <mesh 
-                  scale={[planetRadius, planetRadius, planetRadius]}
-                  onPointerOver={() => {
-                    console.log('Planet hovered:', planet.pl_name); // Add debug log
-                    setHoveredPlanet(index);
-                  }}
-                  onPointerOut={() => {
-                    console.log('Planet unhovered:', planet.pl_name); // Add debug log
-                    setHoveredPlanet(null);
-                  }}
-                >
-                  <sphereGeometry args={[1, showDetailedPlanets ? 32 : 8, showDetailedPlanets ? 32 : 8]} />
-                  {showDetailedPlanets ? (
-                    <primitive object={planetShaders.current[index]} />
-                  ) : (
-                    <meshBasicMaterial color="#ffffff" />
+
+            {/* Calculate planet position */}
+            {(() => {
+              const eccentricity = planet.pl_orbeccen || 0;
+              const semiMajorAxis = orbitRadius;
+              const semiMinorAxis = semiMajorAxis * Math.sqrt(1 - eccentricity * eccentricity);
+              const focusOffset = semiMajorAxis * eccentricity;
+              
+              // Calculate orbital speed
+              const orbitalPeriod = planet.pl_orbper ? planet.pl_orbper / 365 : Math.pow(semiMajorAxis, 1.5);
+              const orbitSpeed = (1 / orbitalPeriod) * Math.pow(30000 * distanceToCamera, 1.5);
+              
+              // Calculate the current angle
+              let angle;
+              if (isPaused) {
+                angle = pausedAnglesRef.current[index];
+              } else {
+                const currentAngle = elapsedTimeRef.current * orbitSpeed;
+                angle = currentAngle;
+                // Store the current angle when pausing
+                pausedAnglesRef.current[index] = currentAngle;
+              }
+              
+              // Calculate position on elliptical orbit
+              const planetX = semiMajorAxis * Math.cos(angle) - focusOffset;
+              const planetZ = semiMinorAxis * Math.sin(angle);
+
+              return (
+                <>
+                  {(showDetailedPlanets || showSimplePlanets) && (
+                    <group ref={(el) => { if (el) planetRefs.current[index] = el; }}>
+                      <mesh 
+                        scale={[planetRadius!, planetRadius!, planetRadius!]}
+                        onPointerOver={() => {
+                          console.log('Planet hovered:', planet.pl_name, 'radius:', planetRadius);
+                          setHoveredPlanet(index);
+                        }}
+                        onPointerOut={() => {
+                          console.log('Planet unhovered:', planet.pl_name);
+                          setHoveredPlanet(null);
+                        }}
+                      >
+                        <sphereGeometry args={[1, showDetailedPlanets ? 32 : 8, showDetailedPlanets ? 32 : 8]} />
+                        {showDetailedPlanets ? (
+                          <primitive object={planetShaders.current[index]} />
+                        ) : (
+                          <meshBasicMaterial color="#ffffff" />
+                        )}
+                      </mesh>
+                    </group>
                   )}
-                </mesh>
-                
-                <PlanetInfoPanel 
-                  planet={planet} 
-                  visible={hoveredPlanet === index}
-                  position={[0, planetRadius * 2, 0]} // Adjust position to be above planet
-                  distanceToCamera={distanceToCamera}
-                />
-              </group>
-            )}
+
+                  {hoveredPlanet === index && (
+                    <group ref={(el) => { if (el) planetTextRefs.current[index] = el; }}>
+                      <Text
+                        position={[planetX, 2, planetZ]}
+                        fontSize={0.8}
+                        color="white"
+                        anchorX="center"
+                        anchorY="middle"
+                        renderOrder={1}
+                        outlineWidth={0.08}
+                        outlineColor="black"
+                      >
+                        {planet.pl_name}
+                      </Text>
+                    </group>
+                  )}
+                </>
+              );
+            })()}
           </group>
         );
       })}
@@ -510,11 +600,11 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({ onStarClick, searchQuery, o
   useEffect(() => {
     console.log('Starting to load exoplanet data...');
     loadExoplanetData()
-      .then(data => {
+      .then((data: ExoplanetSystem[]) => {
         console.log('Data loaded successfully:', data.length, 'systems');
         setSystems(data);
       })
-      .catch(error => {
+      .catch((error: Error) => {
         console.error('Error loading exoplanet data:', error);
       });
   }, []);
@@ -705,7 +795,8 @@ export default function ExoplanetScene() {
           alpha: true,
           powerPreference: "high-performance"
         }}
-        dpr={[1, 2]}
+        dpr={[1, 4]}
+        frameloop="demand"
         style={{ background: '#000' }}
         onCreated={({ gl }) => {
           gl.setClearColor('#000000', 1);
@@ -875,130 +966,5 @@ export default function ExoplanetScene() {
         />
       </div>
     </div>
-  );
-}
-
-function PlanetInfoPanel({ planet, visible, position, distanceToCamera }: { 
-  planet: any, 
-  visible: boolean, 
-  position: [number, number, number] | THREE.Vector3,
-  distanceToCamera: number
-}) {
-  const { camera } = useThree();
-  const textRef = useRef<THREE.Group>(null);
-  
-  useFrame(() => {
-    if (textRef.current) {
-      // Make text always face the camera
-      textRef.current.quaternion.copy(camera.quaternion);
-      
-      // Adjust scaling for better visibility at planetary distances
-      const baseScale = 0.0001;
-      const scaleFactor = Math.max(0.0001, distanceToCamera * baseScale);
-      
-      textRef.current.scale.setScalar(scaleFactor);
-    }
-  });
-  
-  if (!visible) return null;
-  
-  // Format values with units
-  const formatValue = (value: number | null, precision: number = 2, unit: string = ''): string => {
-    if (value === null || isNaN(value)) return 'Unknown';
-    return `${value.toFixed(precision)}${unit}`;
-  };
-  
-  // Determine which properties are available
-  const hasRadius = planet.pl_rade !== null && !isNaN(planet.pl_rade);
-  const hasMass = planet.pl_masse !== null && !isNaN(planet.pl_masse);
-  const hasPeriod = planet.pl_orbper !== null && !isNaN(planet.pl_orbper);
-  const hasSMA = planet.pl_orbsmax !== null && !isNaN(planet.pl_orbsmax);
-  
-  // Count available properties to adjust panel height
-  const availableProps = [hasRadius, hasMass, hasPeriod, hasSMA].filter(Boolean).length;
-  
-  // Adjust panel height based on available properties
-  // Base height for planet name + padding, plus height per property
-  const dynamicPanelHeight = 1.0 + (availableProps * 0.5);
-  
-  // Calculate position so bottom of panel is at a fixed distance above the planet
-  // The panel's pivot is at its center, so we need to offset by half its height plus the desired gap
-  const panelY = (dynamicPanelHeight / 2) + 0.5;
-  
-  // Handle both Vector3 and array position types
-  const posX = position instanceof THREE.Vector3 ? position.x : position[0];
-  const posY = position instanceof THREE.Vector3 ? position.y : position[1];
-  const posZ = position instanceof THREE.Vector3 ? position.z : position[2];
-  
-  // Calculate positions for each text element
-  let textPositions = [];
-  let currentY = 0.7; // Start position for the planet name
-  
-  // Add planet name
-  textPositions.push({ text: planet.pl_name, y: currentY, isTitle: true });
-  
-  // Add available properties with proper spacing
-  const spacing = 0.4;
-  currentY -= spacing;
-  
-  if (hasRadius) {
-    textPositions.push({ 
-      text: `Radius: ${formatValue(planet.pl_rade, 2, ' R⊕')}`, 
-      y: currentY, 
-      isTitle: false 
-    });
-    currentY -= spacing;
-  }
-  
-  if (hasMass) {
-    textPositions.push({ 
-      text: `Mass: ${formatValue(planet.pl_masse, 2, ' M⊕')}`, 
-      y: currentY, 
-      isTitle: false 
-    });
-    currentY -= spacing;
-  }
-  
-  if (hasPeriod) {
-    textPositions.push({ 
-      text: `Period: ${formatValue(planet.pl_orbper, 1, ' days')}`, 
-      y: currentY, 
-      isTitle: false 
-    });
-    currentY -= spacing;
-  }
-  
-  if (hasSMA) {
-    textPositions.push({ 
-      text: `Semi-major axis: ${formatValue(planet.pl_orbsmax, 3, ' AU')}`, 
-      y: currentY, 
-      isTitle: false 
-    });
-  }
-  
-  return (
-    <group position={[posX, posY + panelY, posZ]} ref={textRef}>
-      <mesh position={[0, 0, 0]}>
-        <planeGeometry args={[5, dynamicPanelHeight]} />
-        <meshBasicMaterial color="black" transparent opacity={0.7} />
-      </mesh>
-      
-      {textPositions.map((item, index) => (
-        <Text
-          key={index}
-          position={[0, item.y, 0.01]}
-          fontSize={item.isTitle ? 0.45 : 0.35}
-          color="white"
-          anchorX="center"
-          anchorY="middle"
-          fontWeight={item.isTitle ? "bold" : "normal"}
-          outlineWidth={item.isTitle ? 0.08 : 0}
-          outlineColor="black"
-          renderOrder={1}
-        >
-          {item.text}
-        </Text>
-      ))}
-    </group>
   );
 } 
