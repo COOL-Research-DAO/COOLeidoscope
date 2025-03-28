@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo, forwardRef, useImperativeHandle, useCallback } from 'react';
+import { useEffect, useRef, useState, useMemo, forwardRef, useImperativeHandle, useCallback, memo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Stars, Text, useTexture, Html } from '@react-three/drei';
 import { ExoplanetSystem } from '../types/Exoplanet';
@@ -34,6 +34,7 @@ interface StarProps {
   onDoubleClick: () => void;
   isHighlighted?: boolean;
   isPaused: boolean;
+  position: THREE.Vector3;
 }
 
 interface PlanetsProps {
@@ -50,13 +51,12 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
   const orbitScaleFactor = 1 / 206265; // Convert AU to parsecs
   const { camera } = useThree();
   
-  // Position is now in parsecs
-  const position = equatorialToCartesian(system.ra, system.dec, system.sy_dist);
-  const distanceToCamera = new THREE.Vector3(...position).distanceTo(camera.position);
+  // Remove the position calculation here since the star is already at its adjusted position
+  const distanceToCamera = camera.position.length(); // Distance to origin, since star is now at 0,0,0
   
   // Show planets with different detail levels based on distance
-  const showDetailedPlanets = distanceToCamera < 100./206265; // Show real-sized planets when very close
-  const showSimplePlanets = distanceToCamera < 0.01; // Show dots for planets at medium distance
+  const showDetailedPlanets = distanceToCamera < 100/206265;
+  const showSimplePlanets = distanceToCamera < 0.01;
   
   // Create refs for all planets
   const planetRefs = useRef<THREE.Group[]>([]);
@@ -65,9 +65,10 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
   }
 
   // Track elapsed time and pause state
-  const elapsedTimeRef = useRef(0);
-  const lastFrameTimeRef = useRef(0);
-  const isFirstFrameRef = useRef(true);
+  const animationRef = useRef({
+    elapsedTime: 0,
+    lastFrameTime: 0
+  });
   const lastCameraDistanceRef = useRef<number | null>(null);
   const pausedAnglesRef = useRef<number[]>([]);
   const wasPausedRef = useRef(false);
@@ -126,37 +127,11 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
     });
   }
   
-  useFrame((state) => {
-    const currentTime = state.clock.getElapsedTime();
+  useFrame((state, delta) => {
+    if (isPaused) return;
     
-    // Initialize on first frame
-    if (isFirstFrameRef.current) {
-      lastFrameTimeRef.current = currentTime;
-      lastCameraDistanceRef.current = distanceToCamera;
-      isFirstFrameRef.current = false;
-      return;
-    }
-
-    // Reset paused angles when resuming from pause
-    if (wasPausedRef.current && !isPaused) {
-      pausedAnglesRef.current = [];
-    }
-    wasPausedRef.current = isPaused;
-
-    // Calculate delta time
-    const deltaTime = currentTime - lastFrameTimeRef.current;
-    lastFrameTimeRef.current = currentTime;
-
-    // Only update elapsed time when not paused
-    if (!isPaused) {
-      // Adjust elapsed time based on camera distance change to maintain orbital phase
-      if (lastCameraDistanceRef.current !== null) {
-        const speedRatio = Math.pow(lastCameraDistanceRef.current / distanceToCamera, 1.5);
-        elapsedTimeRef.current *= speedRatio;
-      }
-      elapsedTimeRef.current += deltaTime;
-      lastCameraDistanceRef.current = distanceToCamera;
-    }
+    animationRef.current.elapsedTime += delta;
+    // Update planet positions using animationRef
     
     planetRefs.current.forEach((group, index) => {
       const planet = system.planets[index];
@@ -171,7 +146,7 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
       if (isPaused) {
         angle = pausedAnglesRef.current[index];
       } else {
-        const currentAngle = elapsedTimeRef.current * orbitSpeed;
+        const currentAngle = animationRef.current.elapsedTime * orbitSpeed;
         angle = currentAngle;
         // Store the current angle when pausing
         pausedAnglesRef.current[index] = currentAngle;
@@ -200,6 +175,17 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
         // Update shader uniform with world space light direction for this planet
         planetShaders.current[index].uniforms.lightDirection.value.copy(lightDir);
       }
+
+      // Add debug logging
+      console.log('Planet rendering debug:', {
+        name: planet.pl_name,
+        systemName: system.hostname,
+        distanceToCamera,
+        planetRadius: orbitRadius,
+        isDetailedMode: showDetailedPlanets,
+        position: group.position,
+        scale: group.scale
+      });
     });
   });
 
@@ -213,7 +199,7 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
       // Assuming similar density to Earth, mass in Earth masses
       return Math.pow(planet.pl_masse, 1/3) * 0.0000046491 / 206265;
     }
-    return 0.0000046491 / 206265; // Default size if neither radius nor mass is available
+    return 0.0000046491 / 206265; // Default size (Earth radius) if neither radius nor mass is available
   });
 
   // Add state for hovered planet
@@ -251,7 +237,7 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
         let planetRadius: number | undefined;
         if (showDetailedPlanets) {
           // Use real planet sizes when very close
-          planetRadius = planetSizes[index] * 50000; // Scale up for visibility
+          planetRadius = planetSizes[index] * 5000; // Scale up for visibility
         } else if (showSimplePlanets) {
           // Use fixed-size dots at medium distance
           planetRadius = 0.005 * distanceToCamera; // Fixed size for visibility
@@ -297,7 +283,7 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
               if (isPaused) {
                 angle = pausedAnglesRef.current[index];
               } else {
-                const currentAngle = elapsedTimeRef.current * orbitSpeed;
+                const currentAngle = animationRef.current.elapsedTime * orbitSpeed;
                 angle = currentAngle;
                 // Store the current angle when pausing
                 pausedAnglesRef.current[index] = currentAngle;
@@ -322,11 +308,27 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
                           setHoveredPlanet(null);
                         }}
                       >
-                        <sphereGeometry args={[1, showDetailedPlanets ? 32 : 8, showDetailedPlanets ? 32 : 8]} />
+                        <sphereGeometry args={[1, 128, 128]} />
                         {showDetailedPlanets ? (
                           <primitive object={planetShaders.current[index]} />
                         ) : (
-                          <meshBasicMaterial color="#ffffff" />
+                          <meshStandardMaterial 
+                            color="#ffffff"
+                            roughness={0.8}
+                            metalness={0.2}
+                            envMapIntensity={2}
+                            dithering={true}
+                            toneMapped={true}
+                            flatShading={false}
+                            side={THREE.DoubleSide}
+                            transparent={false}
+                            opacity={1}
+                            depthWrite={true}
+                            depthTest={true}
+                            polygonOffset={true}
+                            polygonOffsetFactor={1}
+                            polygonOffsetUnits={1}
+                          />
                         )}
                       </mesh>
                     </group>
@@ -358,9 +360,8 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
   );
 }
 
-function Star({ system, scale, isFar, onClick, onDoubleClick, isHighlighted, isPaused }: StarProps) {
+const Star = memo(function Star({ system, scale, isFar, onClick, onDoubleClick, isHighlighted, isPaused, position }: StarProps & { position: THREE.Vector3 }) {
   const [hovered, setHovered] = useState(false);
-  const position = equatorialToCartesian(system.ra, system.dec, system.sy_dist);
   const color = temperatureToColor(system.st_teff);
   const textRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.Mesh>(null);
@@ -391,7 +392,7 @@ function Star({ system, scale, isFar, onClick, onDoubleClick, isHighlighted, isP
   let starRadius;
   if (distanceToCamera <= 0.01) {
     // At very close range, use real star size
-    starRadius = realStarSize;
+    starRadius = realStarSize * 10;
   } else if (distanceToCamera <= 0.1) {
     // Transition between real size and standard scaling
     const t = (distanceToCamera - 0.01) / (1 - 0.01); // 0 to 1
@@ -454,7 +455,12 @@ function Star({ system, scale, isFar, onClick, onDoubleClick, isHighlighted, isP
         />
       </mesh>
       
-      <Planets system={system} visible={showPlanets} isPaused={isPaused} starRadius={starRadius} />
+      <Planets 
+        system={system} 
+        visible={showPlanets} 
+        isPaused={isPaused} 
+        starRadius={starRadius}
+      />
       
       {(hovered || isHighlighted) && (
         <group ref={textRef}>
@@ -474,7 +480,7 @@ function Star({ system, scale, isFar, onClick, onDoubleClick, isHighlighted, isP
       )}
     </group>
   );
-}
+});
 
 interface SceneProps {
   onStarClick: (system: ExoplanetSystem) => void;
@@ -498,6 +504,8 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({ onStarClick, searchQuery, o
   const [selectedSystem, setSelectedSystem] = useState<ExoplanetSystem | null>(null);
   const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [cameraDistance, setCameraDistance] = useState(0);
+  const [universeOffset, setUniverseOffset] = useState(new THREE.Vector3(0, 0, 0));
+  const [useUniverseOffset, setUseUniverseOffset] = useState(true);
 
   // Handle space bar press
   useEffect(() => {
@@ -555,19 +563,12 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({ onStarClick, searchQuery, o
     const targetPosition = new THREE.Vector3(...position);
     
     const duration = 1.5;
-    const startTarget = new THREE.Vector3();
-    controlsRef.current?.target.clone(startTarget);
+    const startOffset = universeOffset.clone();
+    const endOffset = targetPosition.clone(); // This will be our new universe offset
     
-    // Calculate the zoom distance based on the largest orbit radius in parsecs
+    // Calculate zoom distance as before
     const maxOrbitRadius = Math.max(...system.planets.map(p => (p.pl_orbsmax || 0) / 206265), 5 / 206265);
-    const zoomDistance = maxOrbitRadius * 2;
-    
-    // Calculate the new camera position by moving along the current view direction
-    const currentDirection = new THREE.Vector3();
-    camera.getWorldDirection(currentDirection);
-    const newCameraPosition = new THREE.Vector3()
-      .copy(targetPosition)
-      .add(currentDirection.multiplyScalar(zoomDistance));
+    const zoomDistance = maxOrbitRadius * 5;
     
     let startTime = performance.now();
     const animate = (currentTime: number) => {
@@ -576,9 +577,14 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({ onStarClick, searchQuery, o
       const easeProgress = progress * (2 - progress); // easeOut quad
       
       if (controlsRef.current) {
-        // Move both the camera and its target
-        camera.position.lerpVectors(camera.position, newCameraPosition, easeProgress);
-        controlsRef.current.target.lerpVectors(startTarget, targetPosition, easeProgress);
+        // Interpolate the universe offset
+        const newOffset = new THREE.Vector3();
+        newOffset.lerpVectors(startOffset, endOffset, easeProgress);
+        setUniverseOffset(newOffset);
+        
+        // Reset camera and controls to look at origin
+        controlsRef.current.target.set(0, 0, 0);
+        camera.position.set(0, 0, zoomDistance);
         controlsRef.current.update();
       }
       
@@ -591,7 +597,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({ onStarClick, searchQuery, o
       startTime = time;
       animate(time);
     });
-  }, [camera]);
+  }, [camera, universeOffset]);
 
   useImperativeHandle(ref, () => ({
     focusOnStar
@@ -644,27 +650,45 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({ onStarClick, searchQuery, o
   
   // Calculate which systems are far away based on camera distance
   const farThreshold = 50;
-  const isFar = (system: ExoplanetSystem) => {
-    const position = equatorialToCartesian(system.ra, system.dec, system.sy_dist);
-    return new THREE.Vector3(...position).distanceTo(camera.position) > farThreshold;
+  const isFar = (system: ExoplanetSystem, position: THREE.Vector3) => {
+    const adjustedPosition = new THREE.Vector3(...position).sub(universeOffset);
+    return adjustedPosition.length() > farThreshold;
   };
   
+  const visibleSystems = useMemo(() => {
+    return systems.filter(system => {
+      const basePosition = equatorialToCartesian(system.ra, system.dec, system.sy_dist);
+      const position = useUniverseOffset 
+        ? new THREE.Vector3(...basePosition).sub(universeOffset)
+        : new THREE.Vector3(...basePosition);
+      return position.length() < 1000; // Only show stars within 1000 parsecs of current view
+    });
+  }, [systems, universeOffset, useUniverseOffset]);
+
   return (
     <>
       <ambientLight intensity={1.0} />
       <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade />
-      {systems.map((system) => (
-        <Star 
-          key={system.hostname} 
-          system={system} 
-          scale={scale} 
-          isFar={isFar(system)}
-          onClick={() => handleStarClick(system)}
-          onDoubleClick={() => handleStarDoubleClick(system)}
-          isHighlighted={system === highlightedSystem}
-          isPaused={isPaused}
-        />
-      ))}
+      {useMemo(() => visibleSystems.map((system) => {
+        const basePosition = equatorialToCartesian(system.ra, system.dec, system.sy_dist);
+        const position = useUniverseOffset 
+          ? new THREE.Vector3(...basePosition).sub(universeOffset)
+          : new THREE.Vector3(...basePosition);
+        
+        return (
+          <Star 
+            key={system.hostname} 
+            system={system} 
+            position={position}
+            scale={scale} 
+            isFar={isFar(system, position)}
+            onClick={() => handleStarClick(system)}
+            onDoubleClick={() => handleStarDoubleClick(system)}
+            isHighlighted={system === highlightedSystem}
+            isPaused={isPaused}
+          />
+        );
+      }), [visibleSystems, universeOffset, scale, highlightedSystem, isPaused, useUniverseOffset])}
       <OrbitControls
         ref={controlsRef}
         enableDamping
@@ -672,7 +696,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({ onStarClick, searchQuery, o
         rotateSpeed={0.1}
         panSpeed={1.0}
         zoomSpeed={1.0}
-        minDistance={1/206265} // 1 AU
+        minDistance={0.1/206265} // 1 AU
         maxDistance={10000} // 10000 parsecs 
         screenSpacePanning={true}
         target={[0, 0, 0]}
@@ -785,10 +809,10 @@ export default function ExoplanetScene() {
       </style>
       <Canvas
         camera={{ 
-          position: [0, 0, 50 ], // 50 parsecs in AU
+          position: [0, 0, 50],
           fov: 45, 
-          near: 0.1/206265, // Reduce near plane to see closer objects
-          far: 10000 * 206265 // 10000 parsecs in AU
+          near: 0.1/206265,
+          far: 10000 * 206265
         }}
         gl={{ 
           antialias: true, 
@@ -796,7 +820,7 @@ export default function ExoplanetScene() {
           powerPreference: "high-performance"
         }}
         dpr={[1, 4]}
-        frameloop="demand"
+        frameloop="always"
         style={{ background: '#000' }}
         onCreated={({ gl }) => {
           gl.setClearColor('#000000', 1);
