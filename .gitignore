@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.cursor
+.cursor/rules/
+.cursor/rules/*.mdc
+cursor_project_rules/
+*.csv
