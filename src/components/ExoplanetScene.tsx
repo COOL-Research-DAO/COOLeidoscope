@@ -35,6 +35,7 @@ interface StarProps {
   isHighlighted?: boolean;
   isPaused: boolean;
   position: THREE.Vector3;
+  sizeScale: number;
 }
 
 interface PlanetsProps {
@@ -42,9 +43,12 @@ interface PlanetsProps {
   visible: boolean;
   isPaused: boolean;
   starRadius: number;
+  sizeScale: number;
+  systemMaxScale: number;
+  planetScaleRatio: number;
 }
 
-function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
+function Planets({ system, visible, isPaused, starRadius, sizeScale, systemMaxScale, planetScaleRatio }: PlanetsProps) {
   if (!visible) return null;
 
   const orbitSegments = 64;
@@ -135,7 +139,8 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
     
     planetRefs.current.forEach((group, index) => {
       const planet = system.planets[index];
-      const orbitRadius = (planet.pl_orbsmax || (index + 1)) / 206265;
+      const orbitRadius = (planet.pl_orbsmax || 
+        (planet.pl_orbper ? Math.pow(planet.pl_orbper / 365, 2/3) : index + 1)) / 206265;
       
       // Use orbital period if available (in days), otherwise calculate from semi-major axis
       const orbitalPeriod = planet.pl_orbper ? planet.pl_orbper / 365 : Math.pow(orbitRadius, 1.5);
@@ -190,17 +195,37 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
   });
 
   // Calculate relative sizes based on radius or mass
-  const planetSizes = system.planets.map(planet => {
-    if (planet.pl_rade) {
-      // Convert Earth radius to parsecs (1 Earth radius ≈ 0.0000046491 AU)
-      return planet.pl_rade * 0.0000046491 / 206265;
-    } else if (planet.pl_masse) {
-      // Convert mass to approximate radius using cube root
-      // Assuming similar density to Earth, mass in Earth masses
-      return Math.pow(planet.pl_masse, 1/3) * 0.0000046491 / 206265;
-    }
-    return 0.0000046491 / 206265; // Default size (Earth radius) if neither radius nor mass is available
-  });
+  const planetSizes = useMemo(() => system.planets.map(planet => {
+    // First calculate the real size in AU
+    const realSizeAU = planet.pl_rade 
+      ? planet.pl_rade * 0.0000046491 // Earth radii to AU
+      : planet.pl_masse 
+        ? Math.pow(planet.pl_masse, 1/3) * 0.0000046491 // Mass to approximate radius in AU
+        : 0.0000046491; // Default to Earth radius in AU
+
+    // Then convert to parsecs (only once)
+    const realSize = realSizeAU / 206265;
+
+    // Use the same scaling logic as the star
+    const sliderRange = 1000 - 1;
+    const t = Math.max(0, Math.sqrt((sizeScale - 1) / sliderRange));
+    
+    // Scale from real size (when t=0) up to maximum size (when t=1)
+    const scaledSize = realSize * (1 + t * systemMaxScale);
+
+    console.log('Planet size calculation:', {
+      planetName: planet.pl_name,
+      realSizeAU,
+      realSize,
+      sliderValue: sizeScale,
+      t,
+      systemMaxScale,
+      scaledSize,
+      scalingFactor: (1 + t * systemMaxScale)
+    });
+
+    return scaledSize;
+  }), [system.planets, sizeScale, systemMaxScale]);
 
   // Add state for hovered planet
   const [hoveredPlanet, setHoveredPlanet] = useState<number | null>(null);
@@ -217,7 +242,6 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
   });
 
   useFrame((state) => {
-    // Update text labels
     planetTextRefs.current.forEach((group, index) => {
       if (group) {
         group.quaternion.copy(camera.quaternion);
@@ -231,13 +255,14 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
   return (
     <>
       {system.planets.map((planet, index) => {
-        const orbitRadius = (planet.pl_orbsmax || (index + 1)) * orbitScaleFactor;
+        const orbitRadius = (planet.pl_orbsmax || 
+          (planet.pl_orbper ? Math.pow(planet.pl_orbper / 365, 2/3) : index + 1)) * orbitScaleFactor;
         
         // Calculate planet size based on distance
         let planetRadius: number | undefined;
         if (showDetailedPlanets) {
           // Use real planet sizes when very close
-          planetRadius = planetSizes[index] * 5000; // Scale up for visibility
+          planetRadius = planetSizes[index]
         } else if (showSimplePlanets) {
           // Use fixed-size dots at medium distance
           planetRadius = 0.005 * distanceToCamera; // Fixed size for visibility
@@ -247,7 +272,8 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
           Array.from({ length: orbitSegments + 1 }, (_, i) => {
             const t = (i / orbitSegments) * Math.PI * 2;
             const eccentricity = planet.pl_orbeccen || 0;
-            const semiMajorAxis = (planet.pl_orbsmax || (index + 1)) / 206265;
+            const semiMajorAxis = (planet.pl_orbsmax || 
+              (planet.pl_orbper ? Math.pow(planet.pl_orbper / 365, 2/3) : index + 1)) / 206265;
             const semiMinorAxis = semiMajorAxis * Math.sqrt(1 - eccentricity * eccentricity);
             const focusOffset = semiMajorAxis * eccentricity;
             
@@ -296,59 +322,60 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
               return (
                 <>
                   {(showDetailedPlanets || showSimplePlanets) && (
-                    <group ref={(el) => { if (el) planetRefs.current[index] = el; }}>
-                      <mesh 
-                        scale={[planetRadius!, planetRadius!, planetRadius!]}
-                        onPointerOver={() => {
-                          console.log('Planet hovered:', planet.pl_name, 'radius:', planetRadius);
-                          setHoveredPlanet(index);
-                        }}
-                        onPointerOut={() => {
-                          console.log('Planet unhovered:', planet.pl_name);
-                          setHoveredPlanet(null);
-                        }}
-                      >
-                        <sphereGeometry args={[1, 128, 128]} />
-                        {showDetailedPlanets ? (
-                          <primitive object={planetShaders.current[index]} />
-                        ) : (
-                          <meshStandardMaterial 
-                            color="#ffffff"
-                            roughness={0.8}
-                            metalness={0.2}
-                            envMapIntensity={2}
-                            dithering={true}
-                            toneMapped={true}
-                            flatShading={false}
-                            side={THREE.DoubleSide}
-                            transparent={false}
-                            opacity={1}
-                            depthWrite={true}
-                            depthTest={true}
-                            polygonOffset={true}
-                            polygonOffsetFactor={1}
-                            polygonOffsetUnits={1}
-                          />
-                        )}
-                      </mesh>
-                    </group>
-                  )}
-
-                  {hoveredPlanet === index && (
-                    <group ref={(el) => { if (el) planetTextRefs.current[index] = el; }}>
-                      <Text
-                        position={[planetX, 2, planetZ]}
-                        fontSize={0.8}
-                        color="white"
-                        anchorX="center"
-                        anchorY="middle"
-                        renderOrder={1}
-                        outlineWidth={0.08}
-                        outlineColor="black"
-                      >
-                        {planet.pl_name}
-                      </Text>
-                    </group>
+                    <>
+                      <group ref={(el) => { if (el) planetRefs.current[index] = el; }}>
+                        <mesh 
+                          scale={[planetRadius!, planetRadius!, planetRadius!]}
+                          onPointerOver={() => {
+                            console.log('Planet hovered:', planet.pl_name, 'radius:', planetRadius);
+                            setHoveredPlanet(index);
+                          }}
+                          onPointerOut={() => {
+                            console.log('Planet unhovered:', planet.pl_name);
+                            setHoveredPlanet(null);
+                          }}
+                        >
+                          <sphereGeometry args={[1, 128, 128]} />
+                          {showDetailedPlanets ? (
+                            <primitive object={planetShaders.current[index]} />
+                          ) : (
+                            <meshStandardMaterial 
+                              color="#ffffff"
+                              roughness={0.8}
+                              metalness={0.2}
+                              envMapIntensity={2}
+                              dithering={true}
+                              toneMapped={true}
+                              flatShading={false}
+                              side={THREE.DoubleSide}
+                              transparent={false}
+                              opacity={1}
+                              depthWrite={true}
+                              depthTest={true}
+                              polygonOffset={true}
+                              polygonOffsetFactor={1}
+                              polygonOffsetUnits={1}
+                            />
+                          )}
+                        </mesh>
+                      </group>
+                      {hoveredPlanet === index && (
+                        <group ref={(el) => { if (el) planetTextRefs.current[index] = el; }}>
+                          <Text
+                            position={[planetX, planetRadius! * 3, planetZ]}
+                            fontSize={0.8}
+                            color="white"
+                            anchorX="center"
+                            anchorY="middle"
+                            renderOrder={2}
+                            outlineWidth={0.08}
+                            outlineColor="black"
+                          >
+                            {planet.pl_name}
+                          </Text>
+                        </group>
+                      )}
+                    </>
                   )}
                 </>
               );
@@ -360,7 +387,7 @@ function Planets({ system, visible, isPaused, starRadius }: PlanetsProps) {
   );
 }
 
-const Star = memo(function Star({ system, scale, isFar, onClick, onDoubleClick, isHighlighted, isPaused, position }: StarProps & { position: THREE.Vector3 }) {
+const Star = memo(function Star({ system, scale, isFar, onClick, onDoubleClick, isHighlighted, isPaused, position, sizeScale }: StarProps) {
   const [hovered, setHovered] = useState(false);
   const color = temperatureToColor(system.st_teff);
   const textRef = useRef<THREE.Group>(null);
@@ -383,23 +410,118 @@ const Star = memo(function Star({ system, scale, isFar, onClick, onDoubleClick, 
     }
   });
   
+  // Calculate minimum orbital gap for the entire system
+  const minOrbitalGap = useMemo(() => {
+    if (system.planets.length === 1) {
+      // If only one planet, use its distance to the star
+      return system.planets[0]?.pl_orbsmax || 
+        (system.planets[0]?.pl_orbper ? Math.pow(system.planets[0].pl_orbper / 365, 2/3) : 1); // Changed from 5 to 1
+    } else {
+      // Find minimum distance between consecutive orbits
+      const sortedOrbits = [...system.planets]
+        .sort((a, b) => (a.pl_orbsmax || 0) - (b.pl_orbsmax || 0));
+      
+      let minGap = sortedOrbits[0].pl_orbsmax || 5; // Initialize with first planet's distance from star
+      for (let i = 1; i < sortedOrbits.length; i++) {
+        const gap = (sortedOrbits[i].pl_orbsmax || 0) - (sortedOrbits[i-1].pl_orbsmax || 0);
+        if (gap > 0) minGap = Math.min(minGap, gap);
+      }
+      return minGap;
+    }
+  }, [system.planets]);
+
   // Calculate real star size in parsecs from solar radii
   const realStarSize = system.st_rad 
     ? (system.st_rad * 0.004649) / 206265  // Convert solar radii to parsecs
     : 0.00465 / 206265; // Default to roughly 1 solar radius
 
-  // Calculate star radius based on distance to camera
+  // Calculate maximum scale factor for the entire system
+  const systemMaxScale = useMemo(() => {
+    // Sort planets by orbit radius
+    const sortedPlanets = [...system.planets]
+      .sort((a, b) => {
+        const aOrbit = a.pl_orbsmax || (a.pl_orbper ? Math.pow(a.pl_orbper / 365, 2/3) : 1);
+        const bOrbit = b.pl_orbsmax || (b.pl_orbper ? Math.pow(b.pl_orbper / 365, 2/3) : 1);
+        return (aOrbit * (1 - (a.pl_orbeccen || 0))) - (bOrbit * (1 - (b.pl_orbeccen || 0)));
+      });
+    
+    // Calculate star's scale factor (to reach halfway to closest approach of first planet)
+    const firstOrbit = sortedPlanets[0]?.pl_orbsmax || 
+      (sortedPlanets[0]?.pl_orbper ? Math.pow(sortedPlanets[0].pl_orbper / 365, 2/3) : 1); // Changed from 5 to 1 for first planet
+    const firstOrbitEccentricity = sortedPlanets[0]?.pl_orbeccen || 0;
+    const periapsis = (1 - firstOrbitEccentricity) * firstOrbit;
+    const starMaxRadius = (periapsis / 2) / 206265;
+    const starMaxScale = starMaxRadius / realStarSize;
+    
+    // Calculate each planet's maximum scale factor
+    const planetScaleFactors = sortedPlanets.map((planet, index) => {
+      const thisOrbit = planet.pl_orbsmax || 
+        (planet.pl_orbper ? Math.pow(planet.pl_orbper / 365, 2/3) : index + 1);
+      const thisEccentricity = planet.pl_orbeccen || 0;
+      const thisPerihelion = thisOrbit * (1 - thisEccentricity);
+      let maxGapRadius = Infinity;
+
+      // Check distance to star
+      if (index === 0) {
+        maxGapRadius = thisPerihelion * 0.3;
+      }
+      
+      // Check distance to previous orbit's perihelion
+      if (index > 0) {
+        const prevOrbit = sortedPlanets[index - 1].pl_orbsmax || index;
+        const prevEccentricity = sortedPlanets[index - 1].pl_orbeccen || 0;
+        const prevPerihelion = prevOrbit * (1 - prevEccentricity);
+        const gap = thisPerihelion - prevPerihelion;
+        maxGapRadius = Math.min(maxGapRadius, gap / 2);
+      }
+      
+      // Check distance to next orbit's perihelion
+      if (index < sortedPlanets.length - 1) {
+        const nextOrbit = sortedPlanets[index + 1].pl_orbsmax || (index + 2);
+        const nextEccentricity = sortedPlanets[index + 1].pl_orbeccen || 0;
+        const nextPerihelion = nextOrbit * (1 - nextEccentricity);
+        const gap = nextPerihelion - thisPerihelion;
+        maxGapRadius = Math.min(maxGapRadius, gap / 2);
+      }
+
+      // If this is the only planet or at the edges, use a reasonable default gap
+      if (maxGapRadius === Infinity) {
+        maxGapRadius = thisPerihelion * 0.3; // Use 30% of perihelion as default gap
+      }
+
+      // Calculate this planet's real size in AU
+      const planetRealSize = planet.pl_rade 
+        ? planet.pl_rade * 0.0000046491 // Earth radii to AU
+        : planet.pl_masse 
+          ? Math.pow(planet.pl_masse, 1/3) * 0.0000046491 // Mass to approximate radius in AU
+          : 0.0000046491; // Default to Earth radius in AU
+
+      // Calculate maximum scale factor as ratio of max allowed size to real size
+      return maxGapRadius / planetRealSize;
+    });
+
+    // Find minimum scale factor among all planets, with a reasonable minimum
+    const planetMaxScale = Math.min(1000000, ...planetScaleFactors);
+    
+    return {
+      starMaxScale,
+      planetMaxScale
+    };
+  }, [system.planets, realStarSize]);
+
+  // Calculate star radius based on distance and scale
   let starRadius;
   if (distanceToCamera <= 0.01) {
-    // At very close range, use real star size
-    starRadius = realStarSize * 10;
+    const sliderRange = 1000 - 1; // max - min
+    const t = Math.sqrt((sizeScale - 1) / sliderRange);
+    starRadius = realStarSize * (1 + t * (systemMaxScale.starMaxScale - 1));
   } else if (distanceToCamera <= 0.1) {
     // Transition between real size and standard scaling
     const t = (distanceToCamera - 0.01) / (1 - 0.01); // 0 to 1
     const standardSize = 0.004 * (1 + (1 - distanceToCamera) * 2);
     starRadius = realStarSize * (1 - t) + standardSize * t;
   } else if (distanceToCamera <= 1) {
-    // Linear scaling between 0.01 and 1 parsecs
+    // Linear scaling between 0.1 and 1 parsecs
     starRadius = 0.004 * distanceToCamera;
   } else if (distanceToCamera <= 50) {
     // Linear scaling between 1 and 50 parsecs
@@ -460,6 +582,9 @@ const Star = memo(function Star({ system, scale, isFar, onClick, onDoubleClick, 
         visible={showPlanets} 
         isPaused={isPaused} 
         starRadius={starRadius}
+        sizeScale={sizeScale}
+        systemMaxScale={systemMaxScale.planetMaxScale}
+        planetScaleRatio={systemMaxScale.planetMaxScale}
       />
       
       {(hovered || isHighlighted) && (
@@ -487,17 +612,27 @@ interface SceneProps {
   searchQuery: string;
   onStarFound?: (system: ExoplanetSystem) => void;
   onStarDoubleClick?: (system: ExoplanetSystem) => void;
+  sizeScale: number;
+  isPaused: boolean;
+  setIsPaused: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 export interface SceneHandle {
   focusOnStar: (system: ExoplanetSystem) => void;
 }
 
-const Scene = forwardRef<SceneHandle, SceneProps>(({ onStarClick, searchQuery, onStarFound, onStarDoubleClick }, ref) => {
+const Scene = forwardRef<SceneHandle, SceneProps>(({ 
+  onStarClick, 
+  searchQuery, 
+  onStarFound, 
+  onStarDoubleClick, 
+  sizeScale,
+  isPaused,
+  setIsPaused 
+}, ref) => {
   const [systems, setSystems] = useState<ExoplanetSystem[]>([]);
   const [scale, setScale] = useState(1);
   const [highlightedSystem, setHighlightedSystem] = useState<ExoplanetSystem | null>(null);
-  const [isPaused, setIsPaused] = useState(false);
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
   const [compactSystem, setCompactSystem] = useState<ExoplanetSystem | null>(null);
@@ -510,15 +645,20 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({ onStarClick, searchQuery, o
   // Handle space bar press
   useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
+      const searchInput = document.querySelector('input[placeholder*="Search for stars"]');
+      if (document.activeElement === searchInput) {
+        return;
+      }
+      
       if (event.code === 'Space') {
-        event.preventDefault(); // Prevent page scroll
-        setIsPaused(prev => !prev);
+        event.preventDefault();
+        setIsPaused((prev: boolean) => !prev);
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, []);
+  }, [setIsPaused]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -686,9 +826,10 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({ onStarClick, searchQuery, o
             onDoubleClick={() => handleStarDoubleClick(system)}
             isHighlighted={system === highlightedSystem}
             isPaused={isPaused}
+            sizeScale={sizeScale}
           />
         );
-      }), [visibleSystems, universeOffset, scale, highlightedSystem, isPaused, useUniverseOffset])}
+      }), [visibleSystems, universeOffset, scale, highlightedSystem, isPaused, useUniverseOffset, sizeScale])}
       <OrbitControls
         ref={controlsRef}
         enableDamping
@@ -722,6 +863,33 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({ onStarClick, searchQuery, o
         }}>
           Distance: {cameraDistance.toFixed(2)} parsecs ({(cameraDistance * 206265).toFixed(0)} AU)
         </div>
+        <div 
+          key={isPaused ? 'paused' : 'playing'}
+          style={{
+            position: 'fixed',
+            bottom: '-400px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            color: 'white',
+            padding: '12px 16px',
+            borderRadius: '4px',
+            fontFamily: 'monospace',
+            fontSize: '56px',
+            zIndex: 1000,
+            animation: 'fadeOut 1.7s ease-out forwards',
+          }}
+        >
+          {isPaused ? '⏸' : '⏵'}
+        </div>
+        <style>
+          {`
+            @keyframes fadeOut {
+              0% { opacity: 1; }
+              100% { opacity: 0; }
+            }
+          `}
+        </style>
       </Html>
     </>
   );
@@ -737,6 +905,8 @@ export default function ExoplanetScene() {
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sceneRef = useRef<SceneHandle>(null);
   const [lastSearchedSystem, setLastSearchedSystem] = useState<string | null>(null);
+  const [sizeScale, setSizeScale] = useState(1);
+  const [isPaused, setIsPaused] = useState(false);
 
   useEffect(() => {
     loadExoplanetData().then(setSystems);
@@ -847,8 +1017,48 @@ export default function ExoplanetScene() {
             setLastSearchedSystem(system.hostname);
             // Don't clear search automatically
           }}
+          sizeScale={sizeScale}
+          isPaused={isPaused}
+          setIsPaused={setIsPaused}
         />
       </Canvas>
+      
+      {/* Size scale slider */}
+      <div 
+        style={{
+          position: 'absolute',
+          bottom: '100px',
+          right: '50px',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          color: 'white',
+          padding: '8px',
+          borderRadius: '4px',
+          width: '200px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}
+      >
+        <span style={{ fontSize: '0.8em' }}>Real size</span>
+        <input
+          type="range"
+          min="1"
+          max="1000"
+          step="1"
+          value={Math.max(1, sizeScale)}
+          onChange={(e) => setSizeScale(Math.max(1, Number(e.target.value)))}
+          onKeyDown={(e) => {
+            if (e.code === 'Space') {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsPaused(prev => !prev);
+            }
+          }}
+          style={{ flex: 1 }}
+        />
+        <span style={{ fontSize: '0.8em' }}>Enlarged</span>
+      </div>
+
       <ColorBar 
         minTemp={(window as any).starTemperatureRange?.min || 2000}
         maxTemp={(window as any).starTemperatureRange?.max || 12000}
