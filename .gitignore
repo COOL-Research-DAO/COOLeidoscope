@@ -27,3 +27,11 @@ dist-ssr
 .cursor/rules/*.mdc
 cursor_project_rules/
 *.csv
+images/
+*.jpg
+*.png
+*.webp
+*.gif
+*.svg
+*.ico
+*.jpeg
