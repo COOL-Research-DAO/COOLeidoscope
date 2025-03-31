@@ -237,7 +237,6 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
   };
   
   const visibleSystems = useMemo(() => {
-    console.error('🌟 SCENE DEBUG 🌟: Calculating visible systems');
     const filteredSystems = systems.filter((system: ExoplanetSystem) => {
       const basePosition = equatorialToCartesian(system.ra, system.dec, system.sy_dist);
       const position = useUniverseOffset 
@@ -245,7 +244,6 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
         : new THREE.Vector3(...basePosition);
       return position.length() < 1000; // Only show stars within 1000 parsecs of current view
     });
-    console.error('🌟 SCENE DEBUG 🌟: Found', filteredSystems.length, 'visible systems');
     return filteredSystems;
   }, [systems, universeOffset, useUniverseOffset]);
 
@@ -256,7 +254,6 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
       <ambientLight intensity={1.0} />
       <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade />
       {useMemo(() => {
-        console.log('🎯 RENDERING STARS:', visibleSystems.length);
         return visibleSystems.map((system) => {
           const isFiltered = !systemMatchesFilters(system, activeFilters);
           const colorByValue = colorByField === 'planetCount' ? 

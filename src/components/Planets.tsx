@@ -248,7 +248,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                   args={[orbitPoints, 3]}
                 />
               </bufferGeometry>
-              <lineBasicMaterial color="#666666" transparent opacity={0.3} />
+              <lineBasicMaterial color="#999999" transparent opacity={0.5} />
             </line>
             
             {/* Planet */}

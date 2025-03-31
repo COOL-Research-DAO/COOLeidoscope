@@ -141,19 +141,8 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
             <meshBasicMaterial
               map={sunTexture}
               transparent={props.isFiltered}
-              opacity={props.isFiltered ? 0.2 : 1}
+              opacity={props.isFiltered ? 0.3 : 1}
               side={THREE.DoubleSide}
-            />
-          </mesh>
-          
-          {/* Add a slightly larger glow sphere behind the star */}
-          <mesh scale={[starRadius * 1.2, starRadius * 1.2, starRadius * 1.2]}>
-            <sphereGeometry args={[1, 32, 32]} />
-            <meshBasicMaterial
-              map={sunTexture}
-              transparent
-              opacity={props.isFiltered ? 0.1 : 0.3}
-              toneMapped={false}
             />
           </mesh>
         </Suspense>
@@ -169,19 +158,9 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
             <sphereGeometry args={[1, 32, 32]} />
             <meshBasicMaterial
               color={color}
-              transparent={props.isFiltered}
-              opacity={props.isFiltered ? 0.2 : 1}
-            />
-          </mesh>
-          
-          {/* Add a slightly larger glow sphere behind the star */}
-          <mesh scale={[starRadius * 1.2, starRadius * 1.2, starRadius * 1.2]}>
-            <sphereGeometry args={[1, 32, 32]} />
-            <meshBasicMaterial
-              color={color}
-              transparent
-              opacity={props.isFiltered ? 0.1 : 0.3}
-              toneMapped={false}
+              transparent={true}
+              opacity={props.isFiltered ? 0.3 : 1}
+              depthWrite={!props.isFiltered}
             />
           </mesh>
         </>

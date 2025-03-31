@@ -94,70 +94,128 @@ export function StarInfoModal({ system, onClose, compact }: StarInfoModalProps) 
 
   return (
     <div style={modalStyle}>
-      {!compact && (
-        <button
-          onClick={onClose}
-          style={{
-            position: 'absolute',
-            top: '1rem',
-            right: '1rem',
-            background: 'none',
-            border: 'none',
-            color: 'white',
-            fontSize: '1.5rem',
-            cursor: 'pointer',
-          }}
-        >
-          ×
-        </button>
-      )}
-
-      <h2 style={{ marginBottom: '1rem' }}>{system.hostname}</h2>
-      
-      <div style={{ marginBottom: '1rem' }}>
-        <h3>Stellar Properties</h3>
-        <p>Coordinates: RA {formatValue(system.ra, 4)}°, Dec {formatValue(system.dec, 4)}°</p>
-        <p>Distance to Earth: {formatDistance(system)}</p>
-        <p>Number of Planets: {system.planets.length}</p>
-        <p>Radius: {formatError(system.st_rad, system.st_rad_err1, system.st_rad_err2)}{system.st_rad !== null && !isNaN(system.st_rad) ? ' R☉' : ''}</p>
-        <p>Mass: {formatError(system.st_mass, system.st_mass_err1, system.st_mass_err2)}{system.st_mass !== null && !isNaN(system.st_mass) ? ' M☉' : ''}</p>
-        <p>Age: {formatError(system.st_age, system.st_age_err1, system.st_age_err2)}{system.st_age !== null && !isNaN(system.st_age) ? ' Gyr' : ''}</p>
-        <p>Temperature: {formatError(system.st_teff, system.st_teff_err1, system.st_teff_err2)}{system.st_teff !== null && !isNaN(system.st_teff) ? 'K' : ''}</p>
-      </div>
-
-      {!compact && (
-        <div>
-          <h3>Planets ({system.planets.length})</h3>
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-            gap: '1rem',
-            marginTop: '1rem'
-          }}>
-            {system.planets.map(planet => (
-              <div 
-                key={planet.pl_name}
-                style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  padding: '1rem',
-                  borderRadius: '4px'
-                }}
-              >
-                <h4>{planet.pl_name}</h4>
-                <p>Radius: {formatValue(planet.pl_rade, 2, ' R⊕')}</p>
-                <p>Mass: {formatValue(planet.pl_masse, 2, ' M⊕')}</p>
-                <p>Density: {formatValue(planet.pl_dens, 2, ' g/cm³')}</p>
-                <p>Orbital Period: {formatValue(planet.pl_orbper, 2, ' days')}</p>
-                <p>Semi-major Axis: {formatValue(planet.pl_orbsmax, 3, ' AU')}</p>
-                <p>Eccentricity: {formatValue(planet.pl_orbeccen, 3)}</p>
-                <p>Discovery Method: {planet.discoverymethod}</p>
-                <p>Discovery Year: {planet.disc_year}</p>
-                <p>Discovery Reference: {parseReferenceLink(planet.disc_refname)}</p>
-                <p>Planetary Parameter Reference: {parseReferenceLink(planet.pl_refname)}</p>
-              </div>
-            ))}
+      {compact ? (
+        <div className="compact-panel">
+          <button 
+            className="absolute top-1 right-1 text-gray-500 hover:text-gray-700 p-1"
+            onClick={onClose}
+          >
+            ×
+          </button>
+          <h2 style={{ marginBottom: '1rem' }}>{system.hostname}</h2>
+          
+          <div style={{ marginBottom: '1rem' }}>
+            <h3>Stellar Properties</h3>
+            <p>Coordinates: RA {formatValue(system.ra, 4)}°, Dec {formatValue(system.dec, 4)}°</p>
+            <p>Distance to Earth: {formatDistance(system)}</p>
+            <p>Number of Planets: {system.planets.length}</p>
+            <p>Radius: {formatError(system.st_rad, system.st_rad_err1, system.st_rad_err2)}{system.st_rad !== null && !isNaN(system.st_rad) ? ' R☉' : ''}</p>
+            <p>Mass: {formatError(system.st_mass, system.st_mass_err1, system.st_mass_err2)}{system.st_mass !== null && !isNaN(system.st_mass) ? ' M☉' : ''}</p>
+            <p>Age: {formatError(system.st_age, system.st_age_err1, system.st_age_err2)}{system.st_age !== null && !isNaN(system.st_age) ? ' Gyr' : ''}</p>
+            <p>Temperature: {formatError(system.st_teff, system.st_teff_err1, system.st_teff_err2)}{system.st_teff !== null && !isNaN(system.st_teff) ? 'K' : ''}</p>
           </div>
+
+          {!compact && (
+            <div>
+              <h3>Planets ({system.planets.length})</h3>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+                gap: '1rem',
+                marginTop: '1rem'
+              }}>
+                {system.planets.map(planet => (
+                  <div 
+                    key={planet.pl_name}
+                    style={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                      padding: '1rem',
+                      borderRadius: '4px'
+                    }}
+                  >
+                    <h4>{planet.pl_name}</h4>
+                    <p>Radius: {formatValue(planet.pl_rade, 2, ' R⊕')}</p>
+                    <p>Mass: {formatValue(planet.pl_masse, 2, ' M⊕')}</p>
+                    <p>Density: {formatValue(planet.pl_dens, 2, ' g/cm³')}</p>
+                    <p>Orbital Period: {formatValue(planet.pl_orbper, 2, ' days')}</p>
+                    <p>Semi-major Axis: {formatValue(planet.pl_orbsmax, 3, ' AU')}</p>
+                    <p>Eccentricity: {formatValue(planet.pl_orbeccen, 3)}</p>
+                    <p>Discovery Method: {planet.discoverymethod}</p>
+                    <p>Discovery Year: {planet.disc_year}</p>
+                    <p>Discovery Reference: {parseReferenceLink(planet.disc_refname)}</p>
+                    <p>Planetary Parameter Reference: {parseReferenceLink(planet.pl_refname)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
+      ) : (
+        <>
+          <button
+            onClick={onClose}
+            style={{
+              position: 'absolute',
+              top: '1rem',
+              right: '1rem',
+              background: 'none',
+              border: 'none',
+              color: 'white',
+              fontSize: '1.5rem',
+              cursor: 'pointer',
+            }}
+          >
+            ×
+          </button>
+
+          <h2 style={{ marginBottom: '1rem' }}>{system.hostname}</h2>
+          
+          <div style={{ marginBottom: '1rem' }}>
+            <h3>Stellar Properties</h3>
+            <p>Coordinates: RA {formatValue(system.ra, 4)}°, Dec {formatValue(system.dec, 4)}°</p>
+            <p>Distance to Earth: {formatDistance(system)}</p>
+            <p>Number of Planets: {system.planets.length}</p>
+            <p>Radius: {formatError(system.st_rad, system.st_rad_err1, system.st_rad_err2)}{system.st_rad !== null && !isNaN(system.st_rad) ? ' R☉' : ''}</p>
+            <p>Mass: {formatError(system.st_mass, system.st_mass_err1, system.st_mass_err2)}{system.st_mass !== null && !isNaN(system.st_mass) ? ' M☉' : ''}</p>
+            <p>Age: {formatError(system.st_age, system.st_age_err1, system.st_age_err2)}{system.st_age !== null && !isNaN(system.st_age) ? ' Gyr' : ''}</p>
+            <p>Temperature: {formatError(system.st_teff, system.st_teff_err1, system.st_teff_err2)}{system.st_teff !== null && !isNaN(system.st_teff) ? 'K' : ''}</p>
+          </div>
+
+          {!compact && (
+            <div>
+              <h3>Planets ({system.planets.length})</h3>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+                gap: '1rem',
+                marginTop: '1rem'
+              }}>
+                {system.planets.map(planet => (
+                  <div 
+                    key={planet.pl_name}
+                    style={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                      padding: '1rem',
+                      borderRadius: '4px'
+                    }}
+                  >
+                    <h4>{planet.pl_name}</h4>
+                    <p>Radius: {formatValue(planet.pl_rade, 2, ' R⊕')}</p>
+                    <p>Mass: {formatValue(planet.pl_masse, 2, ' M⊕')}</p>
+                    <p>Density: {formatValue(planet.pl_dens, 2, ' g/cm³')}</p>
+                    <p>Orbital Period: {formatValue(planet.pl_orbper, 2, ' days')}</p>
+                    <p>Semi-major Axis: {formatValue(planet.pl_orbsmax, 3, ' AU')}</p>
+                    <p>Eccentricity: {formatValue(planet.pl_orbeccen, 3)}</p>
+                    <p>Discovery Method: {planet.discoverymethod}</p>
+                    <p>Discovery Year: {planet.disc_year}</p>
+                    <p>Discovery Reference: {parseReferenceLink(planet.disc_refname)}</p>
+                    <p>Planetary Parameter Reference: {parseReferenceLink(planet.pl_refname)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

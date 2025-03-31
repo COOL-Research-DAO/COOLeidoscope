@@ -413,11 +413,12 @@ export function systemMatchesFilters(system: ExoplanetSystem, filters: FilterOpt
     return true;
   }
 
-  return activeFilters.every(filter => {
+  const matches = activeFilters.every(filter => {
     if (filter.type === 'range' && filter.range) {
       if (filter.field === 'planetCount') {
-        return system.planets.length >= filter.range.currentMin && 
-               system.planets.length <= filter.range.currentMax;
+        const matches = system.planets.length >= filter.range.currentMin && 
+                       system.planets.length <= filter.range.currentMax;
+        return matches;
       }
 
       const value = (system as any)[filter.field];
@@ -430,8 +431,11 @@ export function systemMatchesFilters(system: ExoplanetSystem, filters: FilterOpt
         return isAtFullRange;
       }
       
-      return value >= filter.range.currentMin && value <= filter.range.currentMax;
+      const matches = value >= filter.range.currentMin && value <= filter.range.currentMax;
+      return matches;
     }
     return true;
   });
+
+  return matches;
 } 
