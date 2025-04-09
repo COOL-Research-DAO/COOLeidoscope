@@ -209,11 +209,11 @@ export async function loadExoplanetData(): Promise<ExoplanetSystem[]> {
       
       // Skip entries with missing essential data
       if (isNaN(planet.ra) || isNaN(planet.dec) || isNaN(planet.sy_dist)) {
-        console.log('Missing coordinates for', hostname, ':', {
-          ra: columns[raIndex],
-          dec: columns[decIndex],
-          dist: columns[distIndex]
-        });
+        //console.log('Missing coordinates for', hostname, ':', {
+          //ra: columns[raIndex],
+          //dec: columns[decIndex],
+          //dist: columns[distIndex]
+        //});
         skippedMissingCoords++;
         return;
       }
