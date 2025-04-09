@@ -145,11 +145,18 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
     
     const duration = 1.5;
     const startOffset = universeOffset.clone();
-    const endOffset = targetPosition.clone(); // This will be our new universe offset
+    const endOffset = targetPosition.clone();
     
-    // Calculate zoom distance as before
-    const maxOrbitRadius = Math.max(...system.planets.map(p => (p.pl_orbsmax || 0) / 206265), 5 / 206265);
-    const zoomDistance = maxOrbitRadius * 5;
+    // Calculate zoom distance based on this specific system's largest orbit
+    const maxOrbitRadius = Math.max(
+      ...system.planets.map(p => {
+        // Get orbit size in parsecs (convert from AU)
+        const orbitRadius = (p.pl_orbsmax || 
+          (p.pl_orbper ? Math.pow(p.pl_orbper / 365, 2/3) : 0)) / 206265;
+        return orbitRadius;
+      })
+    );
+    const zoomDistance = maxOrbitRadius * 4;
     
     let startTime = performance.now();
     const animate = (currentTime: number) => {
@@ -158,7 +165,6 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
       const easeProgress = progress * (2 - progress); // easeOut quad
       
       if (controlsRef.current) {
-        // Interpolate the universe offset
         const newOffset = new THREE.Vector3();
         newOffset.lerpVectors(startOffset, endOffset, easeProgress);
         setUniverseOffset(newOffset);
@@ -219,15 +225,6 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
       setHighlightedSystem(null);
     }
   }, [searchQuery, systems, camera]);
-  
-  useFrame((state) => {
-    // Adjust scale based on camera distance
-    const distance = camera.position.length();
-    setScale(Math.max(0.1, Math.min(1, distance / 100)));
-
-    // Update camera distance on each frame
-    setCameraDistance(distance);
-  });
   
   // Calculate which systems are far away based on camera distance
   const farThreshold = 50;
@@ -290,7 +287,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
         ref={controlsRef}
         enableDamping
         dampingFactor={0.05}
-        rotateSpeed={0.1}
+        rotateSpeed={0.3}
         panSpeed={1.0}
         zoomSpeed={1.0}
         minDistance={0.1/206265} // 1 AU

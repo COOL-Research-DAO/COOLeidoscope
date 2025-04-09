@@ -35,7 +35,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     lastFrameTime: 0
   });
   const lastCameraDistanceRef = useRef<number | null>(null);
-  const pausedAnglesRef = useRef<number[]>([]);
+  const currentAnglesRef = useRef<number[]>([]);
   const wasPausedRef = useRef(false);
 
   // Initialize refs if needed
@@ -46,8 +46,8 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     if (planetTextRefs.current.length !== system.planets.length) {
       planetTextRefs.current = system.planets.map(() => new THREE.Group());
     }
-    if (pausedAnglesRef.current.length !== system.planets.length) {
-      pausedAnglesRef.current = new Array(system.planets.length).fill(0);
+    if (currentAnglesRef.current.length !== system.planets.length) {
+      currentAnglesRef.current = new Array(system.planets.length).fill(0);
     }
   }, [system.planets.length]);
 
@@ -110,33 +110,95 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   }, [system.planets.length]);
 
   // Calculate relative sizes based on radius or mass
-  const planetSizes = useMemo(() => system.planets.map(planet => {
-    // Calculate real planet radius in Earth radii
-    const planetRadii = planet.pl_rade || 
-      (planet.pl_masse ? Math.pow(planet.pl_masse, 1/3) : 1); // Use mass to estimate radius if no radius data
-    
-    // Convert to real size in parsecs
+  const planetSizes = useMemo(() => {
+    // Constants for size calculations
     const earthRadiusInAU = 0.0000046491; // Earth radius in AU
-    const realSizeInParsecs = (planetRadii * earthRadiusInAU) / 206265;
-    
-    // Get orbit radius in parsecs
-    const orbitRadius = (planet.pl_orbsmax || 
-      (planet.pl_orbper ? Math.pow(planet.pl_orbper / 365, 2/3) : 1)) / 206265;
-    
-    // Calculate maximum scale based on orbit spacing
-    // We want planets to be at most 1/10th of their orbit spacing
-    const orbitSpacing = orbitRadius * 0.1;
-    const maxScale = orbitSpacing / realSizeInParsecs;
-    
-    // Calculate slider scale factor (0 to 1)
-    const sliderRange = systemMaxScale - 1;
-    const t = Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange));
-    
-    // Scale from real size up to maximum allowed size based on orbit
-    const scaledSize = realSizeInParsecs * (1 + t * maxScale);
+    const auToParsecs = 1 / 206265; // Conversion factor from AU to Parsecs
+    const defaultSizeAU = earthRadiusInAU; // Default to Earth size if no data
 
-    return scaledSize;
-  }), [system.planets, sizeScale, systemMaxScale]);
+    // 1. Prepare Planet Data & Sort by Perihelion
+    const planetsWithData = system.planets.map((planet, index) => {
+      // Calculate real planet size in AU
+      const realSizeAU = planet.pl_rade
+        ? planet.pl_rade * earthRadiusInAU // Use provided Earth radii
+        : planet.pl_masse
+          ? Math.pow(planet.pl_masse, 1/3) * earthRadiusInAU // Estimate from Earth masses
+          : defaultSizeAU; // Fallback to default size
+
+      // Calculate orbit perihelion in AU
+      const orbitRadiusAU = planet.pl_orbsmax ||
+        (planet.pl_orbper ? Math.pow(planet.pl_orbper / 365, 2/3) : index + 1); // Use index+1 as fallback semi-major axis if needed
+      const eccentricity = planet.pl_orbeccen || 0;
+      const perihelionAU = orbitRadiusAU * (1 - eccentricity);
+
+      return { planet, realSizeAU, perihelionAU };
+    }).sort((a, b) => a.perihelionAU - b.perihelionAU); // Sort by closest approach to star
+
+    // Handle single planet case or systems where sorting fails
+    if (planetsWithData.length < 2) {
+      return system.planets.map(planet => {
+        const realSizeAU = planet.pl_rade
+          ? planet.pl_rade * earthRadiusInAU
+          : planet.pl_masse
+            ? Math.pow(planet.pl_masse, 1/3) * earthRadiusInAU
+            : defaultSizeAU;
+        const realSizeInParsecs = realSizeAU * auToParsecs;
+        // Apply slider scale without orbital constraints using a default max multiplier
+        const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1;
+        const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 0;
+        const defaultMaxMultiplier = 1000; // Allows scaling up to 1000x real size via slider
+        return realSizeInParsecs * (1 + t * defaultMaxMultiplier);
+      });
+    }
+
+    // 2. Calculate Individual Max Scale Factors based on Gaps
+    const individualMaxScaleFactors = planetsWithData.map((current, index) => {
+      const prevPerihelionAU = index === 0 ? 0 : planetsWithData[index - 1].perihelionAU; // Star is at 0
+      const nextPerihelionAU = index === planetsWithData.length - 1 ? Infinity : planetsWithData[index + 1].perihelionAU; // No next planet for the last one
+
+      const prevGapAU = Math.max(0, current.perihelionAU - prevPerihelionAU); // Ensure non-negative gap
+      const nextGapAU = nextPerihelionAU === Infinity ? Infinity : Math.max(0, nextPerihelionAU - current.perihelionAU); // Ensure non-negative gap
+
+      // Determine the limiting gap (minimum of previous and next)
+      const limitingGapAU = Math.min(prevGapAU, nextGapAU);
+
+      // Allowed radius is 1/3rd of the limiting gap
+      const allowedRadiusAU = limitingGapAU / 3;
+
+      // Calculate the maximum scale factor for this planet
+      // Avoid division by zero; if real size is 0, max scale is effectively infinite
+      const planetMaxScaleFactor = current.realSizeAU > 1e-10 ? allowedRadiusAU / current.realSizeAU : Infinity;
+      return planetMaxScaleFactor;
+    });
+
+    // 3. Determine System-Wide Max Scale Factor (Minimum of individuals)
+    const systemPlanetMaxScale = Math.min(...individualMaxScaleFactors);
+
+    // Add a reasonable upper cap to prevent extreme scaling if gaps are very large
+    const cappedSystemPlanetMaxScale = Math.min(systemPlanetMaxScale, 1_000_000); // Cap at 1 million times real size
+
+    // 4. Calculate Final Planet Sizes using the System-Wide Max Scale Factor
+    return system.planets.map(planet => {
+      // Recalculate real size in AU for the current planet
+      const realSizeAU = planet.pl_rade
+        ? planet.pl_rade * earthRadiusInAU
+        : planet.pl_masse
+          ? Math.pow(planet.pl_masse, 1/3) * earthRadiusInAU
+          : defaultSizeAU;
+      const realSizeInParsecs = realSizeAU * auToParsecs;
+
+      // Calculate slider influence (t factor: 0 to 1)
+      const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1; // Prevent division by zero/negative range
+      const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 0;
+
+      // Final size = real size * (1 + slider_influence * system_max_scale_factor)
+      const scaledSize = realSizeInParsecs * (1 + t * cappedSystemPlanetMaxScale);
+
+      // Ensure a minimum visible size (optional, but can be helpful)
+      const minVisibleSize = 1e-7; // Adjust as needed
+      return Math.max(minVisibleSize, scaledSize);
+    });
+  }, [system.planets, sizeScale, systemMaxScale]); // Dependencies for the memoization
 
   // Calculate orbit parameters and position for a given planet and angle
   const calculateOrbitPosition = (planet: any, index: number, angle: number) => {
@@ -178,55 +240,102 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     return new Float32Array(points);
   };
 
-  // Update planet positions
+  // Update planet positions and labels
   useFrame((state, delta) => {
-    if (isPaused) return;
-    
-    animationRef.current.elapsedTime += delta;
-    
-    planetRefs.current.forEach((group, index) => {
-      if (!group) return;
+    const { camera } = state; // Get camera from state
+    const distanceToCamera = camera.position.length(); // Recalculate in case it changed
 
-      const planet = system.planets[index];
-      const { orbitRadius } = calculateOrbitPosition(planet, index, 0); // Get orbit parameters
-      
-      // Use orbital period if available (in days), otherwise calculate from semi-major axis
-      const orbitalPeriod = planet.pl_orbper ? planet.pl_orbper / 365 : Math.pow(orbitRadius, 1.5);
-      const orbitSpeed = (1 / orbitalPeriod) * Math.pow(30000 * distanceToCamera, 1.5);
-      
-      // Calculate the current angle only when not paused
-      let angle;
-      if (isPaused) {
-        angle = pausedAnglesRef.current[index];
-      } else {
-        const currentAngle = animationRef.current.elapsedTime * orbitSpeed;
-        angle = currentAngle % (2 * Math.PI); // Keep angle between 0 and 2π
-        pausedAnglesRef.current[index] = angle;
-      }
-      
-      // Calculate position using shared function
-      const position = calculateOrbitPosition(planet, index, angle);
-      
-      // Update planet position
-      group.position.x = position.x;
-      group.position.z = position.z;
-      
-      // Update planet shader lighting
-      if (group.children[0] instanceof THREE.Mesh) {
-        const planetPosition = new THREE.Vector3(position.x, 0, position.z);
-        const starPosition = new THREE.Vector3(0, 0, 0);
-        const lightDir = starPosition.clone().sub(planetPosition).normalize();
-        planetShaders.current[index].uniforms.lightDirection.value.copy(lightDir);
+    // --- Update Text Labels ---
+    // This should run even when paused so labels appear on hover
+    planetTextRefs.current.forEach((group, index) => {
+      if (group && hoveredPlanet === index) { // Only update the hovered label
+        const planetGroup = planetRefs.current[index];
+        if (planetGroup) {
+          // --- Define Min/Max for Offset and Scale ---
+          const minLabelOffset = 0.00000001; // Minimum distance above planet (world units)
+          const maxLabelOffset = 0.0000001;  // Maximum distance above planet (world units)
+          const minLabelScale  = 0.000005; // Minimum visual scale (world units)
+          const maxLabelScale  = 0.001;   // Maximum visual scale (world units)
+          const baseScaleFactor = 0.05; // Base factor for distance scaling
+
+          // --- Calculate Clamped Offset ---
+          const rawOffset = (planetSizes[index] || 0.0000001) * 0.0001; // Original offset calculation
+          const clampedOffset = Math.min(maxLabelOffset, Math.max(minLabelOffset, rawOffset));
+
+          // Position the label slightly above the planet using clamped offset
+          group.position.copy(planetGroup.position);
+          group.position.y += clampedOffset; // Apply clamped offset
+
+          // Make label face the camera
+          group.quaternion.copy(camera.quaternion);
+
+          // --- Calculate Clamped Scale ---
+          const rawScale = distanceToCamera * baseScaleFactor; // Original scale calculation
+          const clampedScale = Math.min(maxLabelScale, Math.max(minLabelScale, rawScale));
+
+          // Scale label based on distance, using clamped scale
+          group.scale.setScalar(clampedScale); // Apply clamped scale
+        }
+      } else if (group && hoveredPlanet !== index) {
+         // Ensure non-hovered labels are hidden or reset scale
+         group.scale.setScalar(0); // Hide non-hovered labels
       }
     });
 
-    // Update text labels
-    planetTextRefs.current.forEach((group, index) => {
-      if (group) {
-        group.quaternion.copy(camera.quaternion);
-        const baseScale = 0.04;
-        const scaleFactor = distanceToCamera * baseScale;
-        group.scale.setScalar(scaleFactor);
+    // --- Return if Paused ---
+    // Planet motion logic below should not run if paused
+    if (isPaused) {
+      // Ensure shader light direction is updated even when paused if hovered
+      if (hoveredPlanet !== null) {
+        const planetGroup = planetRefs.current[hoveredPlanet];
+        const planet = system.planets[hoveredPlanet];
+         if (planetGroup && planetShaders.current[hoveredPlanet]) {
+            const planetPosition = planetGroup.position;
+            const starPosition = new THREE.Vector3(0, 0, 0);
+            const lightDir = starPosition.clone().sub(planetPosition).normalize();
+            planetShaders.current[hoveredPlanet].uniforms.lightDirection.value.copy(lightDir);
+         }
+      }
+      return; // Stop further updates like position changes
+    }
+
+    // --- Update Planet Positions & Shaders (Only if not paused) ---
+    planetRefs.current.forEach((group, index) => {
+      if (!group || index >= currentAnglesRef.current.length) return; // Add bounds check for safety
+
+      const planet = system.planets[index];
+      const { orbitRadius } = calculateOrbitPosition(planet, index, 0); // Get orbit parameters needed for period
+
+      // Use orbital period if available (in days), otherwise estimate from semi-major axis
+      const orbitRadiusAU = orbitRadius * 206265;
+      const orbitalPeriod = planet.pl_orbper ? planet.pl_orbper / 365 : Math.pow(orbitRadiusAU, 1.5); // Period in years
+
+      // Adjust speed based on distance to camera and orbital period
+      const speedFactor = orbitalPeriod > 1e-6 ? (1 / orbitalPeriod) : 0;
+      const orbitSpeed = speedFactor * Math.pow(Math.max(1e-9, 30000 * distanceToCamera), 1.5);
+
+      // --- Incremental Angle Update ---
+      const deltaAngle = orbitSpeed * delta; // Calculate change in angle for this frame
+      currentAnglesRef.current[index] += deltaAngle; // Add the change to the stored angle
+
+      // Use the updated stored angle (modulo 2*PI)
+      const angle = currentAnglesRef.current[index] % (2 * Math.PI);
+      // --- End of Angle Update Change ---
+
+      // Calculate position using shared function with the incrementally updated angle
+      const position = calculateOrbitPosition(planet, index, angle);
+
+      // Update planet position
+      group.position.x = position.x;
+      group.position.z = position.z;
+      group.position.y = 0; // Ensure planets stay on the orbital plane
+
+      // Update planet shader lighting
+      if (group.children[0] instanceof THREE.Mesh && planetShaders.current[index]) {
+        const planetPosition = group.position; // Use the updated group position
+        const starPosition = new THREE.Vector3(0, 0, 0);
+        const lightDir = starPosition.clone().sub(planetPosition).normalize();
+        planetShaders.current[index].uniforms.lightDirection.value.copy(lightDir);
       }
     });
   });
