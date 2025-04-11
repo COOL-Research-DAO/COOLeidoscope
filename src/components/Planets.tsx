@@ -14,6 +14,14 @@ interface PlanetsProps {
   planetScaleRatio: number;
 }
 
+// State to track loaded textures
+interface TextureCache {
+  [key: string]: {
+    texture: THREE.Texture;
+    lastUsed: number;
+  };
+}
+
 export function Planets({ system, visible, isPaused, starRadius, sizeScale, systemMaxScale, planetScaleRatio }: PlanetsProps) {
   const orbitSegments = 64;
   const orbitScaleFactor = 1 / 206265; // Convert AU to parsecs
@@ -37,6 +45,97 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   const lastCameraDistanceRef = useRef<number | null>(null);
   const currentAnglesRef = useRef<number[]>([]);
   const wasPausedRef = useRef(false);
+
+  // Track which planets are close enough for textures
+  const [detailedPlanets, setDetailedPlanets] = useState<boolean[]>([]);
+  
+  // Reference to loader for textures
+  const textureLoader = useMemo(() => new THREE.TextureLoader(), []);
+  
+  // Moon orbit calculation functions
+  const createMoonOrbitPoints = (earthSize: number) => {
+    // Moon's orbit: 384,400 km = 0.00256 AU
+    const moonOrbitRadius = (0.00256 / 206265)*10; // Convert AU to parsecs
+    
+    // Apply the same scaling as planets
+    const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1;
+    const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 0;
+    const maxScale = 1_000_000; // Same cap as used for planets
+    const scaledMoonOrbitRadius = moonOrbitRadius * (1 + t * maxScale);
+    
+    const points = [];
+    for (let i = 0; i <= 64; i++) {
+      const angle = (i / 64) * Math.PI * 2;
+      points.push(
+        scaledMoonOrbitRadius * Math.cos(angle),
+        0,
+        scaledMoonOrbitRadius * Math.sin(angle)
+      );
+    }
+    return new Float32Array(points);
+  };
+
+  const calculateMoonPosition = (planetAngle: number) => {
+    const moonOrbitRadius = (0.00256 / 206265) * 1000; // Same scale as orbit line
+    const moonOrbitalPeriod = 27.32 / 365; // Convert days to years
+    const moonAngle = (planetAngle / moonOrbitalPeriod) % (2 * Math.PI);
+    
+    return new THREE.Vector3(
+      moonOrbitRadius * Math.cos(moonAngle),
+      0,
+      moonOrbitRadius * Math.sin(moonAngle)
+    );
+  };
+
+  // Load moon texture when close to Earth
+  const [moonTexture, setMoonTexture] = useState<THREE.Texture | null>(null);
+  const [saturnRingTexture, setSaturnRingTexture] = useState<THREE.Texture | null>(null);
+
+  useEffect(() => {
+    // Load moon texture regardless of distance
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.load(
+      '/images/2k_moon.jpg',
+      (texture) => {
+        texture.flipY = false;
+        setMoonTexture(texture);
+      }
+    );
+    
+    // Load Saturn ring texture
+    textureLoader.load(
+      '/images/2k_saturn_ring_alpha.png',
+      (texture) => {
+        texture.flipY = false;
+        setSaturnRingTexture(texture);
+      }
+    );
+  }, []); // Only load once
+
+  // Determine which planets should show detailed textures
+  useEffect(() => {
+    // Calculate distance to each planet and determine if it should show texture
+    const detailedThreshold = 0.003; // parsecs, adjust as needed
+    
+    // Create a new array using forEach with index
+    const newDetailedState = [...system.planets].map((_, index) => {
+      // Get the planet's position
+      const planetGroup = planetRefs.current[index];
+      if (!planetGroup) return false;
+      
+      // Calculate distance from camera to this planet
+      const planetPos = new THREE.Vector3().copy(planetGroup.position);
+      const distanceToPlanet = camera.position.distanceTo(planetPos);
+      
+      // Planet is detailed if we're close enough
+      return distanceToPlanet < detailedThreshold;
+    });
+    
+    // Update state only if it changed
+    if (JSON.stringify(newDetailedState) !== JSON.stringify(detailedPlanets)) {
+      setDetailedPlanets(newDetailedState);
+    }
+  }, [distanceToCamera, system.planets, camera.position]);
 
   // Initialize refs if needed
   useEffect(() => {
@@ -64,18 +163,27 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
             dayColor: { value: new THREE.Color(0xffffff) },
             nightColor: { value: new THREE.Color(0xffffff) },
             ambientLight: { value: 0.15 },
-            terminatorSharpness: { value: 0.2 }
+            terminatorSharpness: { value: 0.2 },
+            useTexture: { value: 0 },
+            planetTexture: { value: null }
           },
           vertexShader: `
             uniform vec3 lightDirection;
             varying vec3 vNormal;
             varying vec3 vWorldPosition;
+            varying vec2 vUv;
             
             void main() {
               vec4 worldPosition = modelMatrix * vec4(position, 1.0);
               vWorldPosition = worldPosition.xyz;
+              
               // Transform normal to world space
               vNormal = normalize(mat3(modelMatrix) * normal);
+              
+              // Pass through original UVs which are correctly set up for spherical mapping
+              // Standard sphere mapping works well with equirectangular textures
+              vUv = uv;
+              
               gl_Position = projectionMatrix * viewMatrix * worldPosition;
             }
           `,
@@ -85,8 +193,11 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
             uniform vec3 nightColor;
             uniform float ambientLight;
             uniform float terminatorSharpness;
+            uniform float useTexture;
+            uniform sampler2D planetTexture;
             varying vec3 vNormal;
             varying vec3 vWorldPosition;
+            varying vec2 vUv;
             
             void main() {
               vec3 normal = normalize(vNormal);
@@ -98,8 +209,29 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
               // Create sharp terminator line perpendicular to light direction
               float t = smoothstep(0.0, terminatorSharpness, cosTheta);
               
-              // Add ambient light to night side
-              vec3 color = mix(nightColor * ambientLight, dayColor, t);
+              // Determine final color based on whether we're using texture
+              vec3 color;
+              if (useTexture > 0.5) {
+                // Sample texture based on UV coordinates with proper filtering
+                vec4 texSample = texture2D(planetTexture, vUv);
+                vec3 texColor = texSample.rgb;
+                
+                // Increase brightness and contrast to make features more visible
+                texColor = pow(texColor * 1.2, vec3(0.8));
+                
+                // If texture sample is too dark (black areas), use the base color instead
+                float brightness = texColor.r + texColor.g + texColor.b;
+                if (brightness < 0.1) {
+                  texColor = dayColor;
+                }
+                
+                // Apply day/night transition to texture
+                color = mix(texColor * ambientLight, texColor, t);
+              } else {
+                // Use simple day/night color transition
+                color = mix(nightColor * ambientLight, dayColor, t);
+              }
+              
               gl_FragColor = vec4(color, 1.0);
             }
           `
@@ -108,6 +240,54 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       });
     }
   }, [system.planets.length]);
+  
+  // Load and apply planet textures
+  useEffect(() => {
+    system.planets.forEach((planet, index) => {
+      // Skip if this planet doesn't need a detailed texture
+      if (!detailedPlanets[index]) {
+        // Reset texture if we previously had one
+        if (planetShaders.current[index] && planetShaders.current[index].uniforms.useTexture.value > 0.5) {
+          planetShaders.current[index].uniforms.useTexture.value = 0;
+        }
+        return;
+      }
+      
+      // Extract planet name without system prefix if present
+      let planetName = planet.pl_name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      // If name has system prefix, extract just the planet part
+      if (planet.pl_name.includes(' ')) {
+        const nameParts = planet.pl_name.split(' ');
+        planetName = nameParts[nameParts.length - 1].toLowerCase().replace(/[^a-z0-9]/g, '');
+      }
+      
+      if (!planetName) return; // Skip if no valid name
+      
+      // Try to load 2k texture first
+      const texture2kPath = `/images/2k_${planetName}.jpg`;
+      
+      // Load texture directly with THREE.TextureLoader
+      textureLoader.load(
+        texture2kPath,
+        (texture) => {
+          // Successfully loaded 2k texture
+          console.log(`Loaded 2k texture for ${planetName}`);
+          if (planetShaders.current[index]) {
+            planetShaders.current[index].uniforms.planetTexture.value = texture;
+            planetShaders.current[index].uniforms.useTexture.value = 1;
+          }
+        },
+        undefined, // Progress callback not needed
+        () => {
+          console.warn(`No 2k texture found for ${planetName}`);
+          // Reset texture flag if loading failed
+          if (planetShaders.current[index]) {
+            planetShaders.current[index].uniforms.useTexture.value = 0;
+          }
+        }
+      );
+    });
+  }, [system.planets, detailedPlanets]);
 
   // Calculate relative sizes based on radius or mass
   const planetSizes = useMemo(() => {
@@ -142,12 +322,27 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
           : planet.pl_masse
             ? Math.pow(planet.pl_masse, 1/3) * earthRadiusInAU
             : defaultSizeAU;
-        const realSizeInParsecs = realSizeAU * auToParsecs;
-        // Apply slider scale without orbital constraints using a default max multiplier
+        const realSizeInParsecs = realSizeAU / 206265;
+
+        // Calculate maximum scale based on orbit size
+        const orbitRadiusAU = planet.pl_orbsmax ||
+          (planet.pl_orbper ? Math.pow(planet.pl_orbper / 365, 2/3) : 1);
+        const eccentricity = planet.pl_orbeccen || 0;
+        const perihelionAU = orbitRadiusAU * (1 - eccentricity);
+        
+        // Allow planet to grow up to 1/3 of its orbit radius (same as multi-planet logic)
+        const maxPlanetSizeAU = perihelionAU / 3;
+        const planetMaxScaleFactor = realSizeAU > 1e-10 ? maxPlanetSizeAU / realSizeAU : 1_000_000;
+        
+        // Cap the maximum scale factor
+        const cappedMaxScale = Math.min(planetMaxScaleFactor, 1_000_000);
+
+        // Calculate slider influence
         const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1;
         const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 0;
-        const defaultMaxMultiplier = 1000; // Allows scaling up to 1000x real size via slider
-        return realSizeInParsecs * (1 + t * defaultMaxMultiplier);
+        
+        // Scale up from real size to maximum allowed size
+        return realSizeInParsecs * (1 + t * (cappedMaxScale - 1));
       });
     }
 
@@ -185,18 +380,17 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
         : planet.pl_masse
           ? Math.pow(planet.pl_masse, 1/3) * earthRadiusInAU
           : defaultSizeAU;
-      const realSizeInParsecs = realSizeAU * auToParsecs;
+      const realSizeInParsecs = realSizeAU / 206265; // Real physical size in parsecs
 
       // Calculate slider influence (t factor: 0 to 1)
       const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1; // Prevent division by zero/negative range
       const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 0;
 
-      // Final size = real size * (1 + slider_influence * system_max_scale_factor)
-      const scaledSize = realSizeInParsecs * (1 + t * cappedSystemPlanetMaxScale);
+      // Final size = real size when t=0, scaled up to max allowed size when t=1
+      const scaledSize = realSizeInParsecs * (1 + t * (cappedSystemPlanetMaxScale - 1));
 
-      // Ensure a minimum visible size (optional, but can be helpful)
-      const minVisibleSize = 1e-7; // Adjust as needed
-      return Math.max(minVisibleSize, scaledSize);
+      // Return the scaled size without any minimum size constraint
+      return scaledSize;
     });
   }, [system.planets, sizeScale, systemMaxScale]); // Dependencies for the memoization
 
@@ -240,10 +434,14 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     return new Float32Array(points);
   };
 
+  // Moon state and refs
+  const moonAngleRef = useRef(0);
+  const moonRef = useRef<THREE.Group>(null);
+
   // Update planet positions and labels
   useFrame((state, delta) => {
-    const { camera } = state; // Get camera from state
-    const distanceToCamera = camera.position.length(); // Recalculate in case it changed
+    const { camera } = state;
+    const distanceToCamera = camera.position.length();
 
     // --- Update Text Labels ---
     // This should run even when paused so labels appear on hover
@@ -282,8 +480,6 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       }
     });
 
-    // --- Return if Paused ---
-    // Planet motion logic below should not run if paused
     if (isPaused) {
       // Ensure shader light direction is updated even when paused if hovered
       if (hoveredPlanet !== null) {
@@ -301,10 +497,10 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
 
     // --- Update Planet Positions & Shaders (Only if not paused) ---
     planetRefs.current.forEach((group, index) => {
-      if (!group || index >= currentAnglesRef.current.length) return; // Add bounds check for safety
+      if (!group || index >= currentAnglesRef.current.length) return;
 
       const planet = system.planets[index];
-      const { orbitRadius } = calculateOrbitPosition(planet, index, 0); // Get orbit parameters needed for period
+      const { orbitRadius } = calculateOrbitPosition(planet, index, 0);
 
       // Use orbital period if available (in days), otherwise estimate from semi-major axis
       const orbitRadiusAU = orbitRadius * 206265;
@@ -330,12 +526,45 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       group.position.z = position.z;
       group.position.y = 0; // Ensure planets stay on the orbital plane
 
+      // Add rotation to ensure poles are perpendicular to the ecliptic
+      // This aligns the planet's axis of rotation perpendicular to the orbital plane
+      group.rotation.set(0, 0, 0); // Reset any previous rotation
+      group.rotation.x = 0; // No tilt relative to ecliptic plane for simple visualization
+
       // Update planet shader lighting
       if (group.children[0] instanceof THREE.Mesh && planetShaders.current[index]) {
         const planetPosition = group.position; // Use the updated group position
         const starPosition = new THREE.Vector3(0, 0, 0);
         const lightDir = starPosition.clone().sub(planetPosition).normalize();
         planetShaders.current[index].uniforms.lightDirection.value.copy(lightDir);
+      }
+
+      // Update moon if this is Earth
+      const isEarth = planet.pl_name?.toLowerCase().includes('earth');
+      if (isEarth && moonRef.current) {
+        const moonOrbitRadius = (0.00256 / 206265); // Moon orbit radius in parsecs
+        const moonOrbitalPeriod = 27.32 / 365; // Moon period in years
+        
+        // Apply the same scaling as planets
+        const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1;
+        const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 0;
+        const maxScale = 1_000_000; // Same cap as used for planets
+        const scaledMoonOrbitRadius = moonOrbitRadius * (1 + t * maxScale);
+        
+        // Calculate moon's orbital speed
+        const moonSpeedFactor = 1 / moonOrbitalPeriod;
+        const moonOrbitSpeed = moonSpeedFactor * Math.pow(Math.max(1e-9, 30000 * distanceToCamera), 1.5);
+        
+        // Update moon angle
+        moonAngleRef.current += moonOrbitSpeed * delta;
+        const moonAngle = moonAngleRef.current % (2 * Math.PI);
+        
+        // Calculate moon position relative to Earth using scaled orbit
+        const moonX = scaledMoonOrbitRadius * Math.cos(moonAngle);
+        const moonZ = scaledMoonOrbitRadius * Math.sin(moonAngle);
+        
+        // Update moon position
+        moonRef.current.position.set(moonX, 0, moonZ);
       }
     });
   });
@@ -346,6 +575,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     <group>
       {system.planets.map((planet, index) => {
         const orbitPoints = createOrbitPoints(planet, index);
+        const isEarth = planet.pl_name?.toLowerCase().includes('earth');
         
         return (
           <group key={planet.pl_name}>
@@ -357,7 +587,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                   args={[orbitPoints, 3]}
                 />
               </bufferGeometry>
-              <lineBasicMaterial color="#999999" transparent opacity={0.5} />
+              <lineBasicMaterial color="#999999" transparent opacity={1.0} />
             </line>
             
             {/* Planet */}
@@ -369,6 +599,50 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                 <sphereGeometry args={[planetSizes[index], 32, 32]} />
                 <primitive object={planetShaders.current[index]} />
               </mesh>
+
+              {/* Saturn's rings */}
+              {planet.pl_name?.toLowerCase().includes('saturn') && (
+                <group rotation={[Math.PI * 92.485 / 180, 0, 0]}>
+                  <mesh>
+                    <ringGeometry args={[planetSizes[index] * 1.2, planetSizes[index] * 2.3, 64]} />
+                    <meshBasicMaterial
+                      map={saturnRingTexture}
+                      transparent={true}
+                      side={THREE.DoubleSide}
+                      opacity={1}
+                    />
+                  </mesh>
+                </group>
+              )}
+
+              {/* Moon (only for Earth) */}
+              {isEarth && (
+                <group>
+                  {/* Moon orbit line */}
+                  <line>
+                    <bufferGeometry>
+                      <bufferAttribute
+                        attach="attributes-position"
+                        args={[createMoonOrbitPoints(planetSizes[index]), 3]}
+                      />
+                    </bufferGeometry>
+                    <lineBasicMaterial color="#999999" transparent opacity={0.8} />
+                  </line>
+                  
+                  {/* Moon */}
+                  <group ref={moonRef}>
+                    <mesh
+                      scale={[planetSizes[index] * 0.273, planetSizes[index] * 0.273, planetSizes[index] * 0.273]}
+                    >
+                      <sphereGeometry args={[1, 32, 32]} />
+                      <meshBasicMaterial
+                        map={moonTexture}
+                        color={0xCCCCCC}
+                      />
+                    </mesh>
+                  </group>
+                </group>
+              )}
             </group>
             
             {/* Planet label */}

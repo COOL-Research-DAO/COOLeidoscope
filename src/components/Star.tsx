@@ -1,9 +1,9 @@
 import React, { memo, useState, useMemo, useRef, useEffect, Suspense } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Text, useTexture, Billboard } from '@react-three/drei';
+import { Text, Billboard } from '@react-three/drei';
 import { ExoplanetSystem } from '../types/Exoplanet';
-import { Planets } from './Planets';  // You'll need to move Planets to its own file too
+import { Planets } from './Planets';
 import { FilterOption } from './FilterPanel';
 import { getViridisColor } from '../utils/colorUtils';
 
@@ -28,10 +28,12 @@ interface StarProps {
 const Star = memo(function Star({ system, colorByField, colorByValue, ...props }: StarProps) {
   const [hovered, setHovered] = useState(false);
   const { camera } = useThree();
+  const [starTexture, setStarTexture] = useState<THREE.Texture | null>(null);
+  const [isLoadingTexture, setIsLoadingTexture] = useState(false);
   
   const distanceToCamera = new THREE.Vector3(...props.position).distanceTo(camera.position);
   const showPlanets = distanceToCamera < 10; // Show planets within 10 parsecs
-  const showImage = showPlanets && distanceToCamera < 1; // Only show image when very close
+  const showImage = distanceToCamera < 2; // Increased threshold for better visibility
   
   // Calculate star radius using real astronomical scales
   const realStarRadius = system.st_rad || 1; // Solar radii, default to 1 if unknown
@@ -92,9 +94,24 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
     return getViridisColor(colorByValue, range?.min || 0, range?.max || 1, true);
   }, [colorByField, colorByValue, props.activeFilters, system.planets.length]);
 
-  // Setup texture paths and load sun texture
-  const sunImagePath = '/images/sun.jpg';
-  const sunTexture = useTexture(sunImagePath);
+  // Load star texture
+  useEffect(() => {
+    if (showImage && !starTexture && !isLoadingTexture) {
+      setIsLoadingTexture(true);
+      
+      const textureLoader = new THREE.TextureLoader();
+      textureLoader.load(
+        '/images/2k_sun.jpg',
+        (texture) => {
+          texture.flipY = false;
+          setStarTexture(texture);
+          setIsLoadingTexture(false);
+        },
+        undefined,
+        () => setIsLoadingTexture(false)
+      );
+    }
+  }, [showImage, starTexture, isLoadingTexture]);
 
   // Common elements
   const labelElement = (hovered || props.isHighlighted) && (
@@ -139,7 +156,8 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
           >
             <sphereGeometry args={[1, 32, 32]} />
             <meshBasicMaterial
-              map={sunTexture}
+              map={starTexture}
+              color={0xFFFFFF}
               transparent={props.isFiltered}
               opacity={props.isFiltered ? 0.3 : 1}
               side={THREE.DoubleSide}
