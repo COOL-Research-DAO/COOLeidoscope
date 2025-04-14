@@ -53,9 +53,31 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   const textureLoader = useMemo(() => new THREE.TextureLoader(), []);
   
   // Moon orbit calculation functions
+  const getMoonOrbitRadius = () => {
+    const baseOrbitRadius = (0.00256 / 206265); // Convert AU to parsecs
+    const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1;
+    const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 0;
+    // Apply square root scaling for smoother growth
+    return baseOrbitRadius * (1 + Math.sqrt(t * (cappedSystemPlanetMaxScale - 1)));
+  };
+
   const createMoonOrbitPoints = (earthSize: number) => {
-    // Moon's orbit: 384,400 km = 0.00256 AU
-    const moonOrbitRadius = (0.00256 / 206265)*10; // Convert AU to parsecs
+    const scaledOrbitRadius = getMoonOrbitRadius();
+    const points = [];
+    for (let i = 0; i <= 64; i++) {
+      const angle = (i / 64) * Math.PI * 2;
+      points.push(
+        scaledOrbitRadius * Math.cos(angle),
+        0,
+        scaledOrbitRadius * Math.sin(angle)
+      );
+    }
+    return new Float32Array(points);
+  };
+
+  const calculateMoonPosition = (planetAngle: number) => {
+    const moonOrbitRadius = (0.00256 / 206265); // Convert AU to parsecs
+    const moonOrbitalPeriod = 27.32 / 365; // Convert days to years
     
     // Apply the same scaling as planets
     const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1;
@@ -63,29 +85,113 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     const maxScale = 1_000_000; // Same cap as used for planets
     const scaledMoonOrbitRadius = moonOrbitRadius * (1 + t * maxScale);
     
-    const points = [];
-    for (let i = 0; i <= 64; i++) {
-      const angle = (i / 64) * Math.PI * 2;
-      points.push(
-        scaledMoonOrbitRadius * Math.cos(angle),
-        0,
-        scaledMoonOrbitRadius * Math.sin(angle)
-      );
-    }
-    return new Float32Array(points);
-  };
-
-  const calculateMoonPosition = (planetAngle: number) => {
-    const moonOrbitRadius = (0.00256 / 206265) * 1000; // Same scale as orbit line
-    const moonOrbitalPeriod = 27.32 / 365; // Convert days to years
     const moonAngle = (planetAngle / moonOrbitalPeriod) % (2 * Math.PI);
     
     return new THREE.Vector3(
-      moonOrbitRadius * Math.cos(moonAngle),
+      scaledMoonOrbitRadius * Math.cos(moonAngle),
       0,
-      moonOrbitRadius * Math.sin(moonAngle)
+      scaledMoonOrbitRadius * Math.sin(moonAngle)
     );
   };
+
+  // Create Saturn ring shader material
+  const saturnRingMaterial = useMemo(() => new THREE.ShaderMaterial({
+    uniforms: {
+      ringTexture: { value: null }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D ringTexture;
+      varying vec2 vUv;
+      void main() {
+        float r = length(vUv - vec2(0.5)) * 2.0;
+        gl_FragColor = texture2D(ringTexture, vec2(r, 0.5));
+      }
+    `,
+    transparent: true,
+    side: THREE.DoubleSide
+  }), []);
+
+  // Create moon shader material
+  const moonShaderMaterial = useMemo(() => new THREE.ShaderMaterial({
+    uniforms: {
+      lightDirection: { value: new THREE.Vector3(0, 0, 0) },
+      dayColor: { value: new THREE.Color(0xCCCCCC) },
+      nightColor: { value: new THREE.Color(0x666666) },
+      ambientLight: { value: 0.15 },
+      terminatorSharpness: { value: 0.2 },
+      useTexture: { value: 0 },
+      moonTexture: { value: null }
+    },
+    vertexShader: `
+      uniform vec3 lightDirection;
+      varying vec3 vNormal;
+      varying vec3 vWorldPosition;
+      varying vec2 vUv;
+      
+      void main() {
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        
+        // Transform normal to world space
+        vNormal = normalize(mat3(modelMatrix) * normal);
+        
+        // Pass through UVs
+        vUv = uv;
+        
+        gl_Position = projectionMatrix * viewMatrix * worldPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 lightDirection;
+      uniform vec3 dayColor;
+      uniform vec3 nightColor;
+      uniform float ambientLight;
+      uniform float terminatorSharpness;
+      uniform float useTexture;
+      uniform sampler2D moonTexture;
+      varying vec3 vNormal;
+      varying vec3 vWorldPosition;
+      varying vec2 vUv;
+      
+      void main() {
+        vec3 normal = normalize(vNormal);
+        vec3 lightDir = normalize(lightDirection);
+        
+        // Calculate illumination
+        float cosTheta = dot(normal, lightDir);
+        
+        // Create sharp terminator line
+        float t = smoothstep(0.0, terminatorSharpness, cosTheta);
+        
+        // Determine final color
+        vec3 color;
+        if (useTexture > 0.5) {
+          vec4 texSample = texture2D(moonTexture, vUv);
+          vec3 texColor = texSample.rgb;
+          
+          // Increase contrast to make features more visible
+          texColor = pow(texColor * 1.2, vec3(0.8));
+          
+          // Apply day/night transition to texture
+          color = mix(texColor * ambientLight, texColor, t);
+        } else {
+          // Use simple day/night color transition
+          color = mix(nightColor * ambientLight, dayColor, t);
+        }
+        
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `,
+    transparent: false,
+    side: THREE.FrontSide
+  }), []);
 
   // Load moon texture when close to Earth
   const [moonTexture, setMoonTexture] = useState<THREE.Texture | null>(null);
@@ -99,6 +205,8 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       (texture) => {
         texture.flipY = false;
         setMoonTexture(texture);
+        moonShaderMaterial.uniforms.moonTexture.value = texture;
+        moonShaderMaterial.uniforms.useTexture.value = 1;
       }
     );
     
@@ -107,10 +215,11 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       '/images/2k_saturn_ring_alpha.png',
       (texture) => {
         texture.flipY = false;
+        saturnRingMaterial.uniforms.ringTexture.value = texture;
         setSaturnRingTexture(texture);
       }
     );
-  }, []); // Only load once
+  }, [saturnRingMaterial, moonShaderMaterial]);
 
   // Determine which planets should show detailed textures
   useEffect(() => {
@@ -290,7 +399,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   }, [system.planets, detailedPlanets]);
 
   // Calculate relative sizes based on radius or mass
-  const planetSizes = useMemo(() => {
+  const { planetSizes, cappedSystemPlanetMaxScale } = useMemo(() => {
     // Constants for size calculations
     const earthRadiusInAU = 0.0000046491; // Earth radius in AU
     const auToParsecs = 1 / 206265; // Conversion factor from AU to Parsecs
@@ -316,7 +425,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
 
     // Handle single planet case or systems where sorting fails
     if (planetsWithData.length < 2) {
-      return system.planets.map(planet => {
+      const sizes = system.planets.map(planet => {
         const realSizeAU = planet.pl_rade
           ? planet.pl_rade * earthRadiusInAU
           : planet.pl_masse
@@ -344,6 +453,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
         // Scale up from real size to maximum allowed size
         return realSizeInParsecs * (1 + t * (cappedMaxScale - 1));
       });
+      return { planetSizes: sizes, cappedSystemPlanetMaxScale: 1_000_000 };
     }
 
     // 2. Calculate Individual Max Scale Factors based on Gaps
@@ -373,7 +483,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     const cappedSystemPlanetMaxScale = Math.min(systemPlanetMaxScale, 1_000_000); // Cap at 1 million times real size
 
     // 4. Calculate Final Planet Sizes using the System-Wide Max Scale Factor
-    return system.planets.map(planet => {
+    const sizes = system.planets.map(planet => {
       // Recalculate real size in AU for the current planet
       const realSizeAU = planet.pl_rade
         ? planet.pl_rade * earthRadiusInAU
@@ -387,12 +497,11 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 0;
 
       // Final size = real size when t=0, scaled up to max allowed size when t=1
-      const scaledSize = realSizeInParsecs * (1 + t * (cappedSystemPlanetMaxScale - 1));
-
-      // Return the scaled size without any minimum size constraint
-      return scaledSize;
+      return realSizeInParsecs * (1 + t * (cappedSystemPlanetMaxScale - 1));
     });
-  }, [system.planets, sizeScale, systemMaxScale]); // Dependencies for the memoization
+
+    return { planetSizes: sizes, cappedSystemPlanetMaxScale };
+  }, [system.planets, sizeScale, systemMaxScale]);
 
   // Calculate orbit parameters and position for a given planet and angle
   const calculateOrbitPosition = (planet: any, index: number, angle: number) => {
@@ -542,29 +651,37 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       // Update moon if this is Earth
       const isEarth = planet.pl_name?.toLowerCase().includes('earth');
       if (isEarth && moonRef.current) {
-        const moonOrbitRadius = (0.00256 / 206265); // Moon orbit radius in parsecs
+        const scaledOrbitRadius = getMoonOrbitRadius();
         const moonOrbitalPeriod = 27.32 / 365; // Moon period in years
-        
-        // Apply the same scaling as planets
-        const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1;
-        const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 0;
-        const maxScale = 1_000_000; // Same cap as used for planets
-        const scaledMoonOrbitRadius = moonOrbitRadius * (1 + t * maxScale);
-        
-        // Calculate moon's orbital speed
         const moonSpeedFactor = 1 / moonOrbitalPeriod;
         const moonOrbitSpeed = moonSpeedFactor * Math.pow(Math.max(1e-9, 30000 * distanceToCamera), 1.5);
         
-        // Update moon angle
         moonAngleRef.current += moonOrbitSpeed * delta;
         const moonAngle = moonAngleRef.current % (2 * Math.PI);
         
-        // Calculate moon position relative to Earth using scaled orbit
-        const moonX = scaledMoonOrbitRadius * Math.cos(moonAngle);
-        const moonZ = scaledMoonOrbitRadius * Math.sin(moonAngle);
+        // Calculate moon's absolute position by adding Earth's position
+        const earthPosition = new THREE.Vector3(
+          planetRefs.current[index].position.x,
+          planetRefs.current[index].position.y,
+          planetRefs.current[index].position.z
+        );
         
-        // Update moon position
-        moonRef.current.position.set(moonX, 0, moonZ);
+        const moonLocalPosition = new THREE.Vector3(
+          scaledOrbitRadius * Math.cos(moonAngle),
+          0,
+          scaledOrbitRadius * Math.sin(moonAngle)
+        );
+        
+        // Set moon's position relative to Earth
+        moonRef.current.position.copy(moonLocalPosition);
+        
+        // Calculate moon's absolute position for lighting
+        const moonAbsolutePosition = moonLocalPosition.clone().add(earthPosition);
+        
+        // Update moon shader lighting based on absolute position relative to star
+        const starPosition = new THREE.Vector3(0, 0, 0);
+        const lightDir = starPosition.clone().sub(moonAbsolutePosition).normalize();
+        moonShaderMaterial.uniforms.lightDirection.value.copy(lightDir);
       }
     });
   });
@@ -605,12 +722,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                 <group rotation={[Math.PI * 92.485 / 180, 0, 0]}>
                   <mesh>
                     <ringGeometry args={[planetSizes[index] * 1.2, planetSizes[index] * 2.3, 64]} />
-                    <meshBasicMaterial
-                      map={saturnRingTexture}
-                      transparent={true}
-                      side={THREE.DoubleSide}
-                      opacity={1}
-                    />
+                    <primitive object={saturnRingMaterial} />
                   </mesh>
                 </group>
               )}
@@ -635,10 +747,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                       scale={[planetSizes[index] * 0.273, planetSizes[index] * 0.273, planetSizes[index] * 0.273]}
                     >
                       <sphereGeometry args={[1, 32, 32]} />
-                      <meshBasicMaterial
-                        map={moonTexture}
-                        color={0xCCCCCC}
-                      />
+                      <primitive object={moonShaderMaterial} />
                     </mesh>
                   </group>
                 </group>
