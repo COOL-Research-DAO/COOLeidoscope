@@ -12,6 +12,8 @@ interface PlanetsProps {
   sizeScale: number;
   systemMaxScale: number;
   planetScaleRatio: number;
+  onPlanetDoubleClick?: (system: ExoplanetSystem, planetIndex: number) => void;
+  registerPlanetAngle?: (systemName: string, planetIndex: number, angle: number, size?: number) => void;
 }
 
 // State to track loaded textures
@@ -22,7 +24,7 @@ interface TextureCache {
   };
 }
 
-export function Planets({ system, visible, isPaused, starRadius, sizeScale, systemMaxScale, planetScaleRatio }: PlanetsProps) {
+export function Planets({ system, visible, isPaused, starRadius, sizeScale, systemMaxScale, planetScaleRatio, onPlanetDoubleClick, registerPlanetAngle }: PlanetsProps) {
   const orbitSegments = 64;
   const orbitScaleFactor = 1 / 206265; // Convert AU to parsecs
   const { camera } = useThree();
@@ -625,6 +627,12 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
 
       // Use the updated stored angle (modulo 2*PI)
       const angle = currentAnglesRef.current[index] % (2 * Math.PI);
+      
+      // Register the angle and size with the parent component if the function exists
+      if (registerPlanetAngle) {
+        registerPlanetAngle(system.hostname, index, angle, planetSizes[index]);
+      }
+      
       // --- End of Angle Update Change ---
 
       // Calculate position using shared function with the incrementally updated angle
@@ -659,6 +667,13 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
         moonAngleRef.current += moonOrbitSpeed * delta;
         const moonAngle = moonAngleRef.current % (2 * Math.PI);
         
+        // Register the moon angle and size with the parent component if the function exists
+        if (registerPlanetAngle) {
+          // For the moon, use the Earth's size scaled by the moon/earth ratio (0.273)
+          const moonSize = planetSizes[index] * 0.273;
+          registerPlanetAngle(system.hostname, -1, moonAngle, moonSize);
+        }
+        
         // Calculate moon's absolute position by adding Earth's position
         const earthPosition = new THREE.Vector3(
           planetRefs.current[index].position.x,
@@ -686,6 +701,13 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     });
   });
 
+  // Add a planet double-click handler
+  const handlePlanetDoubleClick = (index: number) => {
+    if (onPlanetDoubleClick) {
+      onPlanetDoubleClick(system, index);
+    }
+  };
+
   if (!visible) return null;
 
   return (
@@ -712,6 +734,11 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
               <mesh
                 onPointerOver={() => setHoveredPlanet(index)}
                 onPointerOut={() => setHoveredPlanet(null)}
+                onClick={(e) => { e.stopPropagation(); }} 
+                onDoubleClick={(e) => { 
+                  e.stopPropagation(); 
+                  handlePlanetDoubleClick(index); 
+                }}
               >
                 <sphereGeometry args={[planetSizes[index], 32, 32]} />
                 <primitive object={planetShaders.current[index]} />
@@ -745,6 +772,13 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                   <group ref={moonRef}>
                     <mesh
                       scale={[planetSizes[index] * 0.273, planetSizes[index] * 0.273, planetSizes[index] * 0.273]}
+                      onDoubleClick={(e) => { 
+                        e.stopPropagation(); 
+                        // Special case for the moon
+                        if (isEarth && onPlanetDoubleClick) {
+                          onPlanetDoubleClick(system, -1); // Use -1 to indicate the moon
+                        }
+                      }}
                     >
                       <sphereGeometry args={[1, 32, 32]} />
                       <primitive object={moonShaderMaterial} />

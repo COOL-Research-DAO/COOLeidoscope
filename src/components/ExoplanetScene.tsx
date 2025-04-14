@@ -143,9 +143,15 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
     const position = equatorialToCartesian(system.ra, system.dec, system.sy_dist);
     const targetPosition = new THREE.Vector3(...position);
     
-    const duration = 1.5;
+    // Longer duration for more visible travel
+    const duration = 3.0;
+    
+    // Set up the animation
     const startOffset = universeOffset.clone();
     const endOffset = targetPosition.clone();
+    
+    // Get initial camera position
+    const initialCameraPos = camera.position.clone();
     
     // Calculate zoom distance based on this specific system's largest orbit
     const maxOrbitRadius = Math.max(
@@ -156,22 +162,38 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
         return orbitRadius;
       })
     );
-    const zoomDistance = maxOrbitRadius * 4;
+    const finalZoomDistance = maxOrbitRadius * 4;
     
+    // Start animation
     let startTime = performance.now();
     const animate = (currentTime: number) => {
       const elapsed = (currentTime - startTime) / 1000;
       const progress = Math.min(1, elapsed / duration);
-      const easeProgress = progress * (2 - progress); // easeOut quad
+      
+      // Cubic easing for smooth motion
+      const easeProgress = progress < 0.5 
+        ? 4 * progress * progress * progress 
+        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
       
       if (controlsRef.current) {
+        // 1. First, update universe offset to center the target star (rotate universe)
         const newOffset = new THREE.Vector3();
         newOffset.lerpVectors(startOffset, endOffset, easeProgress);
         setUniverseOffset(newOffset);
         
-        // Reset camera and controls to look at origin
+        // 2. Then, zoom the camera from its initial distance to the appropriate zoom distance
+        // Calculate intermediate zoom distance
+        const initialDistance = initialCameraPos.length();
+        const currentZoomDistance = initialDistance * (1 - easeProgress) + finalZoomDistance * easeProgress;
+        
+        // Get direction from camera to origin (0,0,0)
+        const direction = new THREE.Vector3(0, 0, 0).sub(camera.position).normalize();
+        
+        // Set camera position: keep same direction but adjust distance
+        camera.position.copy(direction.multiplyScalar(-currentZoomDistance));
+        
+        // Keep looking at origin
         controlsRef.current.target.set(0, 0, 0);
-        camera.position.set(0, 0, zoomDistance);
         controlsRef.current.update();
       }
       
@@ -244,8 +266,217 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
     return filteredSystems;
   }, [systems, universeOffset, useUniverseOffset]);
 
+  // Add references to planet positions and sizes
+  const planetAnglesRef = useRef<Map<string, number>>(new Map());
+  const planetSizesRef = useRef<Map<string, number>>(new Map());
 
-  
+  // Add a function to register planet angles and sizes
+  const registerPlanetAngle = (systemName: string, planetIndex: number, angle: number, size?: number) => {
+    const angleKey = `${systemName}-${planetIndex}`;
+    planetAnglesRef.current.set(angleKey, angle);
+    
+    if (size !== undefined) {
+      const sizeKey = `${systemName}-${planetIndex}-size`;
+      planetSizesRef.current.set(sizeKey, size);
+    }
+  };
+
+  // Animation function for planet focus
+  const animatePlanetFocus = (
+    startOffset: THREE.Vector3,
+    endOffset: THREE.Vector3,
+    finalZoomDistance: number,
+    initialCameraPos: THREE.Vector3
+  ) => {
+    // Two-phase animation (first center, then zoom)
+    const centeringDuration = 1.0; // Duration for centering phase
+    const zoomingDuration = 1.5; // Duration for zooming phase
+    const totalDuration = centeringDuration + zoomingDuration;
+    
+    let startTime = performance.now();
+    const animate = (currentTime: number) => {
+      const elapsed = (currentTime - startTime) / 1000;
+      
+      // Two animation phases
+      if (elapsed < centeringDuration) {
+        // Phase 1: Center the planet (0 to centeringDuration)
+        const centerProgress = Math.min(1, elapsed / centeringDuration);
+        const easeCenterProgress = centerProgress < 0.5 
+          ? 4 * centerProgress * centerProgress * centerProgress 
+          : 1 - Math.pow(-2 * centerProgress + 2, 3) / 2;
+        
+        if (controlsRef.current) {
+          // Update universe offset to center the planet/moon
+          const newOffset = new THREE.Vector3();
+          newOffset.lerpVectors(startOffset, endOffset, easeCenterProgress);
+          setUniverseOffset(newOffset);
+          
+          // Keep camera at same distance during centering
+          controlsRef.current.target.set(0, 0, 0);
+          controlsRef.current.update();
+        }
+      } else {
+        // Phase 2: Zoom in (centeringDuration to totalDuration)
+        const zoomProgress = Math.min(1, (elapsed - centeringDuration) / zoomingDuration);
+        const easeZoomProgress = zoomProgress < 0.5 
+          ? 4 * zoomProgress * zoomProgress * zoomProgress 
+          : 1 - Math.pow(-2 * zoomProgress + 2, 3) / 2;
+        
+        if (controlsRef.current) {
+          // Keep universe offset at final position (planet centered)
+          setUniverseOffset(endOffset);
+          
+          // Calculate intermediate zoom distance
+          const initialDistance = initialCameraPos.length();
+          const currentZoomDistance = initialDistance * (1 - easeZoomProgress) + finalZoomDistance * easeZoomProgress;
+          
+          // Get direction from camera to origin and apply zoom
+          const direction = new THREE.Vector3(0, 0, 0).sub(camera.position).normalize();
+          camera.position.copy(direction.multiplyScalar(-currentZoomDistance));
+          
+          // Keep looking at origin
+          controlsRef.current.target.set(0, 0, 0);
+          controlsRef.current.update();
+        }
+      }
+      
+      if (elapsed < totalDuration) {
+        requestAnimationFrame(animate);
+      }
+    };
+    
+    requestAnimationFrame((time) => {
+      startTime = time;
+      animate(time);
+    });
+  };
+
+  // Add a new function to focus on a planet
+  const focusOnPlanet = useCallback((system: ExoplanetSystem, planetIndex: number) => {
+    // First, get the star position
+    const starPosition = equatorialToCartesian(system.ra, system.dec, system.sy_dist);
+    
+    // Set up the animation
+    const startOffset = universeOffset.clone();
+    
+    // Get initial camera position
+    const initialCameraPos = camera.position.clone();
+    
+    // Calculate planet-specific zoom parameters
+    const planet = planetIndex >= 0 ? system.planets[planetIndex] : null;
+    const isMoon = planetIndex === -1; // Special case for Earth's moon
+    
+    // Find Earth index if this is a moon focus
+    const earthIndex = isMoon ? system.planets.findIndex(p => 
+      p.pl_name?.toLowerCase().includes('earth')
+    ) : -1;
+    
+    // Determine planet position and appropriate zoom distance
+    let finalZoomDistance = 10;
+    
+    if (isMoon) {
+      // For the moon, we need to get Earth's current position and the moon's position relative to it
+      // First, place the star at origin
+      const endStarOffset = new THREE.Vector3(...starPosition);
+      
+      // Get Earth's current angle from our reference
+      const earthKey = `${system.hostname}-${earthIndex}`;
+      const earthAngle = planetAnglesRef.current.get(earthKey) || 0;
+      
+      // Get Earth's position from the Planets component (its current angle)
+      const earthPlanet = system.planets[earthIndex];
+      const earthOrbitRadius = (earthPlanet.pl_orbsmax || 
+        (earthPlanet.pl_orbper ? Math.pow(earthPlanet.pl_orbper / 365, 2/3) : earthIndex + 1)) / 206265;
+      
+      // Calculate Earth's current position using its current angle
+      const earthX = earthOrbitRadius * Math.cos(earthAngle);
+      const earthZ = earthOrbitRadius * Math.sin(earthAngle);
+      
+      // Get moon's current angle - for the moon we'll use a special key
+      const moonKey = `${system.hostname}-${-1}`;
+      const moonAngle = planetAnglesRef.current.get(moonKey) || 0;
+      
+      // Calculate moon position relative to Earth with current angle
+      const moonOrbitRadius = (0.00256 / 206265); // Moon orbit in parsecs
+      const moonX = moonOrbitRadius * Math.cos(moonAngle);
+      const moonZ = moonOrbitRadius * Math.sin(moonAngle);
+      
+      // Final moon position is Earth's position plus moon's relative position
+      const moonPosition = new THREE.Vector3(earthX + moonX, 0, earthZ + moonZ);
+      
+      // Offset that places moon at origin
+      const endOffset = endStarOffset.clone().add(moonPosition);
+      
+      // Get scaled moon size if available
+      const moonSizeKey = `${system.hostname}-${-1}-size`;
+      const scaledMoonSize = planetSizesRef.current.get(moonSizeKey);
+      
+      // Set zoom distance based on the moon's scaled size
+      if (scaledMoonSize) {
+        finalZoomDistance = scaledMoonSize * 5; // Reduced multiplier for closer zoom
+      } else {
+        // Fallback to original calculation if size not available
+        finalZoomDistance = moonOrbitRadius * 0.1;
+      }
+      
+      // Start two-phase animation (first center, then zoom)
+      animatePlanetFocus(startOffset, endOffset, finalZoomDistance, initialCameraPos);
+
+    } else if (planet) {
+      // For regular planets, get the current position in its orbit
+      // First, place the star at origin
+      const endStarOffset = new THREE.Vector3(...starPosition);
+      
+      // Get the planet's current angle from our reference
+      const planetKey = `${system.hostname}-${planetIndex}`;
+      const planetAngle = planetAnglesRef.current.get(planetKey) || 0;
+      
+      // Calculate orbit radius in parsecs
+      const orbitRadius = (planet.pl_orbsmax || 
+        (planet.pl_orbper ? Math.pow(planet.pl_orbper / 365, 2/3) : planetIndex + 1)) / 206265;
+      
+      // Calculate current planet position using its current angle
+      const planetX = orbitRadius * Math.cos(planetAngle);
+      const planetZ = orbitRadius * Math.sin(planetAngle);
+      const planetPosition = new THREE.Vector3(planetX, 0, planetZ);
+      
+      // Offset that places planet at origin
+      const endOffset = endStarOffset.clone().add(planetPosition);
+      
+      // Get scaled planet size if available
+      const planetSizeKey = `${system.hostname}-${planetIndex}-size`;
+      const scaledPlanetSize = planetSizesRef.current.get(planetSizeKey);
+      
+      // Set zoom distance based on the planet's scaled size
+      if (scaledPlanetSize) {
+        finalZoomDistance = scaledPlanetSize * 10; // Adjust multiplier as needed
+      } else {
+        // Fallback to original calculation
+        const earthRadiusInAU = 0.0000046491; // Earth radius in AU
+        const earthRadiusInParsecs = earthRadiusInAU / 206265;
+        
+        let planetSize = earthRadiusInParsecs; // Default to Earth size
+        if (planet.pl_rade) {
+          planetSize = planet.pl_rade * earthRadiusInParsecs;
+        } else if (planet.pl_masse) {
+          planetSize = Math.pow(planet.pl_masse, 1/3) * earthRadiusInParsecs;
+        }
+        
+        // Use a default scaling if we don't have the actual scaled size
+        finalZoomDistance = planetSize * 200;
+      }
+      
+      // Start two-phase animation (first center, then zoom)
+      animatePlanetFocus(startOffset, endOffset, finalZoomDistance, initialCameraPos);
+    }
+  }, [camera, universeOffset]);
+
+  // Add planet double-click handler
+  const handlePlanetDoubleClick = (system: ExoplanetSystem, planetIndex: number) => {
+    focusOnPlanet(system, planetIndex);
+    // Optionally set other state like compactSystem if needed
+  };
+
   return (
     <>
       <ambientLight intensity={1.0} />
@@ -270,6 +501,8 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
               isFar={isFar(system, position)}
           onClick={() => handleStarClick(system)}
           onDoubleClick={() => handleStarDoubleClick(system)}
+          onPlanetDoubleClick={(sys, planetIndex) => handlePlanetDoubleClick(sys, planetIndex)}
+          registerPlanetAngle={registerPlanetAngle}
           isHighlighted={system === highlightedSystem}
           isPaused={isPaused}
               sizeScale={sizeScale}
@@ -282,7 +515,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
             />
           );
         });
-      }, [visibleSystems, universeOffset, scale, highlightedSystem, isPaused, useUniverseOffset, sizeScale, activeFilters, colorByField])}
+      }, [visibleSystems, universeOffset, scale, highlightedSystem, isPaused, useUniverseOffset, sizeScale, activeFilters, colorByField, registerPlanetAngle])}
       <OrbitControls
         ref={controlsRef}
         enableDamping

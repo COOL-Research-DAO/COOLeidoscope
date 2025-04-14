@@ -13,6 +13,8 @@ interface StarProps {
   isFar: boolean;
   onClick: () => void;
   onDoubleClick: () => void;
+  onPlanetDoubleClick?: (system: ExoplanetSystem, planetIndex: number) => void;
+  registerPlanetAngle?: (systemName: string, planetIndex: number, angle: number) => void;
   isHighlighted?: boolean;
   isPaused: boolean;
   position: THREE.Vector3;
@@ -192,6 +194,8 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
         sizeScale={props.sizeScale}
         systemMaxScale={props.systemMaxScale}
         planetScaleRatio={props.planetScaleRatio}
+        onPlanetDoubleClick={props.onPlanetDoubleClick}
+        registerPlanetAngle={props.registerPlanetAngle}
       />
       
       {labelElement}
