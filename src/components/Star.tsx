@@ -7,6 +7,27 @@ import { Planets } from './Planets';
 import { FilterOption } from './FilterPanel';
 import { getViridisColor } from '../utils/colorUtils';
 
+// Global texture singleton for all stars to share
+let globalStarTexture: THREE.Texture | null = null;
+let isLoadingGlobalTexture = false;
+
+// Create a radial gradient texture for the glow
+const glowTexture = (() => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d')!;
+  const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+  gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.3)');
+  gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 64, 64);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+})();
+
 interface StarProps {
   system: ExoplanetSystem;
   scale: number;
@@ -35,7 +56,8 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
   
   const distanceToCamera = new THREE.Vector3(...props.position).distanceTo(camera.position);
   const showPlanets = distanceToCamera < 10; // Show planets within 10 parsecs
-  const showImage = distanceToCamera < 2; // Increased threshold for better visibility
+  const showImage = distanceToCamera < 2; // Only load textures when very close
+  const showGlow = distanceToCamera >= 2; // Glow effect for all non-close stars
   
   // Calculate star radius using real astronomical scales
   const realStarRadius = system.st_rad || 1; // Solar radii, default to 1 if unknown
@@ -96,7 +118,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
     return getViridisColor(colorByValue, range?.min || 0, range?.max || 1, true);
   }, [colorByField, colorByValue, props.activeFilters, system.planets.length]);
 
-  // Load star texture
+  // Only load textures when we're actually showing them
   useEffect(() => {
     if (showImage && !starTexture && !isLoadingTexture) {
       setIsLoadingTexture(true);
@@ -105,15 +127,61 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
       textureLoader.load(
         '/images/2k_sun.jpg',
         (texture) => {
+          // Configure texture for optimal appearance
           texture.flipY = false;
+          texture.wrapS = THREE.RepeatWrapping;
+          texture.wrapT = THREE.RepeatWrapping;
+          texture.minFilter = THREE.LinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+          texture.anisotropy = 16; // Increase anisotropy for better quality when viewed at an angle
+          texture.needsUpdate = true;
           setStarTexture(texture);
           setIsLoadingTexture(false);
         },
         undefined,
-        () => setIsLoadingTexture(false)
+        (error) => {
+          console.error("Error loading star texture:", error);
+          setIsLoadingTexture(false);
+        }
       );
     }
   }, [showImage, starTexture, isLoadingTexture]);
+
+  // Use a global texture for all stars (singleton pattern)
+  useEffect(() => {
+    // Only load the global texture when we might show images
+    if (showImage && !globalStarTexture && !isLoadingGlobalTexture) {
+      isLoadingGlobalTexture = true;
+      
+      const textureLoader = new THREE.TextureLoader();
+      textureLoader.load(
+        '/images/2k_sun.jpg', 
+        (texture) => {
+          texture.flipY = false;
+          texture.wrapS = THREE.RepeatWrapping;
+          texture.wrapT = THREE.RepeatWrapping;
+          texture.minFilter = THREE.LinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+          texture.anisotropy = 16;
+          texture.needsUpdate = true;
+          globalStarTexture = texture;
+          isLoadingGlobalTexture = false;
+          // Update this star's texture too
+          if (!starTexture) {
+            setStarTexture(texture);
+          }
+        },
+        undefined,
+        (error) => {
+          console.error("Error loading global star texture:", error);
+          isLoadingGlobalTexture = false;
+        }
+      );
+    } else if (showImage && globalStarTexture && !starTexture) {
+      // Use already loaded global texture
+      setStarTexture(globalStarTexture);
+    }
+  }, [starTexture, showImage]);
 
   // Common elements
   const labelElement = (hovered || props.isHighlighted) && (
@@ -133,7 +201,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
     </Billboard>
   );
 
-  const pointLightElement = (
+  const pointLightElement = showImage && (
     <pointLight
       color={color}
       intensity={2}
@@ -142,48 +210,83 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
     />
   );
 
-  // Render either sphere or image
+  // Render based on distance
   return (
     <group position={props.position}>
       {pointLightElement}
       
       {showImage ? (
-        <Suspense fallback={null}>
-          <mesh
-            onPointerOver={() => setHovered(true)}
-            onPointerOut={() => setHovered(false)}
-            onClick={props.onClick}
-            onDoubleClick={props.onDoubleClick}
-            scale={[starRadius, starRadius, starRadius]}
-          >
-            <sphereGeometry args={[1, 32, 32]} />
-            <meshBasicMaterial
-              map={starTexture}
-              color={0xFFFFFF}
-              transparent={props.isFiltered}
-              opacity={props.isFiltered ? 0.3 : 1}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
-        </Suspense>
-      ) : (
-        <>
-          <mesh
-            onPointerOver={() => setHovered(true)}
-            onPointerOut={() => setHovered(false)}
-            onClick={props.onClick}
-            onDoubleClick={props.onDoubleClick}
-            scale={[starRadius, starRadius, starRadius]}
-          >
+        // Close stars with texture
+        <Suspense fallback={
+          <mesh scale={[starRadius, starRadius, starRadius]}>
             <sphereGeometry args={[1, 32, 32]} />
             <meshBasicMaterial
               color={color}
-              transparent={true}
+              transparent={props.isFiltered}
+              opacity={props.isFiltered ? 0.3 : 1}
+            />
+          </mesh>
+        }>
+          <mesh
+            onPointerOver={() => setHovered(true)}
+            onPointerOut={() => setHovered(false)}
+            onClick={props.onClick}
+            onDoubleClick={props.onDoubleClick}
+            scale={[starRadius, starRadius, starRadius]}
+          >
+            <sphereGeometry args={[1, 64, 64]} /> {/* Higher resolution geometry */}
+            <meshBasicMaterial
+              map={starTexture || globalStarTexture}
+              color={new THREE.Color(0xFFFFFF).multiplyScalar(props.isFiltered ? 0.75 : 2.5)} /* Adjust brightness based on filter */
+              transparent={props.isFiltered}
+              opacity={props.isFiltered ? 0.3 : 1}
+              side={THREE.DoubleSide}
+              alphaTest={0.1} /* Prevent z-fighting */
+              depthWrite={true} /* Ensure proper depth sorting */
+              depthTest={true}
+            />
+          </mesh>
+        </Suspense>
+      ) : showGlow ? (
+        // Medium-distance and far stars with glow effect
+        <>
+          {/* Core star */}
+          <mesh
+            onPointerOver={() => setHovered(true)}
+            onPointerOut={() => setHovered(false)}
+            onClick={props.onClick}
+            onDoubleClick={props.onDoubleClick}
+            scale={[starRadius, starRadius, starRadius]}
+          >
+            <sphereGeometry args={[1, 16, 16]} />
+            <meshBasicMaterial
+              color={color.clone().multiplyScalar(props.isFiltered ? 0.2 : 1)}
+              transparent={props.isFiltered}
               opacity={props.isFiltered ? 0.3 : 1}
               depthWrite={!props.isFiltered}
             />
           </mesh>
+          
+          {/* Gradient glow effect */}
+          <Billboard>
+            <mesh scale={[starRadius * 8.0, starRadius * 8.0, 1]}>
+              <planeGeometry args={[1, 1]} />
+              <meshBasicMaterial
+                color={color}
+                transparent={true}
+                opacity={props.isFiltered ? 0.09 : 1.0}
+                depthWrite={false}
+                side={THREE.DoubleSide}
+                map={glowTexture}
+                alphaMap={glowTexture}
+                blending={THREE.AdditiveBlending}
+              />
+            </mesh>
+          </Billboard>
         </>
+      ) : (
+        // Empty group for consistency
+        <group />
       )}
 
       <Planets 
