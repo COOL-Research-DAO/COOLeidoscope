@@ -46,14 +46,16 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   });
   const lastCameraDistanceRef = useRef<number | null>(null);
   const currentAnglesRef = useRef<number[]>([]);
+  const rotationAnglesRef = useRef<number[]>([]); // Track rotation angles
   const wasPausedRef = useRef(false);
 
   // Track which planets are close enough for textures
   const [detailedPlanets, setDetailedPlanets] = useState<boolean[]>([]);
   
   // Reference to loader for textures
+  const textureCache = useMemo(() => new Map<string, THREE.Texture>(), []);
   const textureLoader = useMemo(() => new THREE.TextureLoader(), []);
-  
+
   // Moon orbit calculation functions
   const getMoonOrbitRadius = () => {
     const baseOrbitRadius = (0.00256 / 206265); // Convert AU to parsecs
@@ -259,6 +261,9 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     if (currentAnglesRef.current.length !== system.planets.length) {
       currentAnglesRef.current = new Array(system.planets.length).fill(0);
     }
+    if (rotationAnglesRef.current.length !== system.planets.length) {
+      rotationAnglesRef.current = new Array(system.planets.length).fill(0);
+    }
   }, [system.planets.length]);
 
   // Create separate shader instances for each planet
@@ -354,51 +359,109 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   
   // Load and apply planet textures
   useEffect(() => {
-    system.planets.forEach((planet, index) => {
-      // Skip if this planet doesn't need a detailed texture
-      if (!detailedPlanets[index]) {
-        // Reset texture if we previously had one
-        if (planetShaders.current[index] && planetShaders.current[index].uniforms.useTexture.value > 0.5) {
+    // Skip all texture loading if no planets are detailed
+    if (!detailedPlanets.some(isDetailed => isDetailed)) {
+      // Reset all textures
+      system.planets.forEach((_, index) => {
+        if (planetShaders.current[index]) {
           planetShaders.current[index].uniforms.useTexture.value = 0;
+          planetShaders.current[index].uniforms.planetTexture.value = null;
+        }
+      });
+      return;
+    }
+
+    // Cleanup function to track which textures are still needed
+    const neededTextures = new Set<string>();
+    
+    // Only process planets that are marked as detailed
+    const detailedPlanetIndices = detailedPlanets
+      .map((isDetailed, index) => isDetailed ? index : -1)
+      .filter(index => index !== -1);
+
+    // Load textures only for detailed planets
+    detailedPlanetIndices.forEach(index => {
+      const planet = system.planets[index];
+      const planetName = planet.pl_name.toLowerCase().replace(/[^a-z0-9-]/g, '');
+      if (!planetName) return;
+
+      // Add to needed textures set
+      neededTextures.add(planetName);
+      
+      // If texture is already cached, use it
+      if (textureCache.has(planetName)) {
+        const texture = textureCache.get(planetName)!;
+        if (planetShaders.current[index]) {
+          planetShaders.current[index].uniforms.planetTexture.value = texture;
+          planetShaders.current[index].uniforms.useTexture.value = 1;
         }
         return;
       }
       
-      // Extract planet name without system prefix if present
-      let planetName = planet.pl_name.toLowerCase().replace(/[^a-z0-9]/g, '');
-      // If name has system prefix, extract just the planet part
-      if (planet.pl_name.includes(' ')) {
-        const nameParts = planet.pl_name.split(' ');
-        planetName = nameParts[nameParts.length - 1].toLowerCase().replace(/[^a-z0-9]/g, '');
-      }
+      // Try different file patterns and extensions
+      const texturePaths = [
+        `/images/2k_${planetName}.jpg`,
+        `/images/2k_${planetName}.png`,
+        `/images/${planetName}.jpg`,
+        `/images/${planetName}.png`
+      ];
       
-      if (!planetName) return; // Skip if no valid name
+      console.log(`Attempting to load texture for ${planetName} - planet is within detailed threshold`);
       
-      // Try to load 2k texture first
-      const texture2kPath = `/images/2k_${planetName}.jpg`;
-      
-      // Load texture directly with THREE.TextureLoader
-      textureLoader.load(
-        texture2kPath,
-        (texture) => {
-          // Successfully loaded 2k texture
-          console.log(`Loaded 2k texture for ${planetName}`);
-          if (planetShaders.current[index]) {
-            planetShaders.current[index].uniforms.planetTexture.value = texture;
-            planetShaders.current[index].uniforms.useTexture.value = 1;
-          }
-        },
-        undefined, // Progress callback not needed
-        () => {
-          console.warn(`No 2k texture found for ${planetName}`);
-          // Reset texture flag if loading failed
+      // Try loading each texture path in sequence until one succeeds
+      const tryLoadTexture = (pathIndex: number) => {
+        if (pathIndex >= texturePaths.length) {
+          console.warn(`No texture found for ${planetName}`);
           if (planetShaders.current[index]) {
             planetShaders.current[index].uniforms.useTexture.value = 0;
+            planetShaders.current[index].uniforms.planetTexture.value = null;
           }
+          return;
         }
-      );
+        
+        textureLoader.load(
+          texturePaths[pathIndex],
+          (texture) => {
+            // Only apply if planet is still detailed
+            if (detailedPlanets[index]) {
+              console.log(`Loaded and applied texture for ${planetName} from ${texturePaths[pathIndex]}`);
+              textureCache.set(planetName, texture);
+              if (planetShaders.current[index]) {
+                planetShaders.current[index].uniforms.planetTexture.value = texture;
+                planetShaders.current[index].uniforms.useTexture.value = 1;
+              }
+            } else {
+              texture.dispose();
+              console.log(`Skipped applying texture for ${planetName} - no longer detailed`);
+            }
+          },
+          undefined,
+          () => tryLoadTexture(pathIndex + 1)
+        );
+      };
+      
+      tryLoadTexture(0);
     });
-  }, [system.planets, detailedPlanets]);
+
+    // Reset textures for non-detailed planets
+    system.planets.forEach((_, index) => {
+      if (!detailedPlanets[index] && planetShaders.current[index]) {
+        planetShaders.current[index].uniforms.useTexture.value = 0;
+        planetShaders.current[index].uniforms.planetTexture.value = null;
+      }
+    });
+    
+    // Cleanup unused textures
+    return () => {
+      for (const [planetName, texture] of textureCache.entries()) {
+        if (!neededTextures.has(planetName)) {
+          texture.dispose();
+          textureCache.delete(planetName);
+          console.log(`Disposed texture for ${planetName} - no longer needed`);
+        }
+      }
+    };
+  }, [system.planets, detailedPlanets, camera.position]);
 
   // Calculate relative sizes based on radius or mass
   const { planetSizes, cappedSystemPlanetMaxScale } = useMemo(() => {
@@ -549,6 +612,41 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   const moonAngleRef = useRef(0);
   const moonRef = useRef<THREE.Group>(null);
 
+  // Helper function to get planet rotation period in Earth days
+  const getPlanetRotationPeriod = (planet: any): number => {
+    // Known rotation periods for some planets (in Earth days)
+    const knownPeriods: { [key: string]: number } = {
+      'mercury': 58.646,
+      'venus': -243.018, // Negative indicates retrograde rotation
+      'earth': 1.0,
+      'mars': 1.026,
+      'jupiter': 0.414,
+      'saturn': 0.445,
+      'uranus': -0.718,
+      'neptune': 0.671
+    };
+
+    const planetName = planet.pl_name?.toLowerCase() || '';
+    for (const [name, period] of Object.entries(knownPeriods)) {
+      if (planetName.includes(name)) {
+        return period;
+      }
+    }
+
+    // For unknown planets, estimate based on size and orbital period
+    // Larger planets tend to rotate faster, and planets closer to their star tend to be tidally locked
+    const orbitalPeriod = planet.pl_orbper || 365; // Default to 1 year if unknown
+    const planetRadius = planet.pl_rade || 1; // Earth radii
+
+    if (orbitalPeriod < 10) {
+      // Very close planets are likely tidally locked
+      return orbitalPeriod;
+    } else {
+      // Rough estimate: faster rotation for larger planets
+      return Math.max(0.1, Math.min(100, 10 / Math.sqrt(planetRadius)));
+    }
+  };
+
   // Update planet positions and labels
   useFrame((state, delta) => {
     const { camera } = state;
@@ -643,10 +741,13 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       group.position.z = position.z;
       group.position.y = 0; // Ensure planets stay on the orbital plane
 
-      // Add rotation to ensure poles are perpendicular to the ecliptic
-      // This aligns the planet's axis of rotation perpendicular to the orbital plane
-      group.rotation.set(0, 0, 0); // Reset any previous rotation
-      group.rotation.x = 0; // No tilt relative to ecliptic plane for simple visualization
+      // Update planet rotation
+      const rotationPeriod = getPlanetRotationPeriod(planet);
+      const rotationSpeed = (2 * Math.PI) / (rotationPeriod * 24 * 60 * 60); // Convert days to seconds
+      rotationAnglesRef.current[index] += rotationSpeed * delta * 100000; // Scale up for visibility
+
+      // Apply both axial tilt and rotation
+      group.rotation.set(0, rotationAnglesRef.current[index], 0);
 
       // Update planet shader lighting
       if (group.children[0] instanceof THREE.Mesh && planetShaders.current[index]) {

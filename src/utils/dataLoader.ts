@@ -153,7 +153,10 @@ export async function loadExoplanetData(): Promise<ExoplanetSystem[]> {
     });
     validSystems++;
     
-    // Process rows, only keeping entries with default_flag=1
+    // Create a temporary map to store all TRAPPIST-1 entries by planet letter
+    const trappistEntriesMap = new Map<string, Exoplanet[]>();
+    
+    // Process rows, only keeping entries with default_flag=1 (and collecting all TRAPPIST-1 entries)
     rows.forEach(row => {
       if (!row.trim()) return;
       
@@ -161,8 +164,8 @@ export async function loadExoplanetData(): Promise<ExoplanetSystem[]> {
       const default_flag = parseInt(columns[defaultFlagIndex]);
       const hostname = columns[2];
       
-      // Skip any entry that doesn't have default_flag=1
-      if (default_flag !== 1) {
+      // For non-TRAPPIST-1 systems, skip if not default
+      if (!hostname.includes('TRAPPIST-1') && default_flag !== 1) {
         skippedNoDefaultFlag++;
         return;
       }
@@ -206,30 +209,35 @@ export async function loadExoplanetData(): Promise<ExoplanetSystem[]> {
         dec: parseFloat(columns[decIndex]),
         rowupdate: columns[columns.length - 1]
       };
+
+      // For TRAPPIST-1, collect all entries
+      if (hostname.includes('TRAPPIST-1')) {
+        const planetLetter = planet.pl_name.split(' ')[1];
+        if (!trappistEntriesMap.has(planetLetter)) {
+          trappistEntriesMap.set(planetLetter, []);
+        }
+        trappistEntriesMap.get(planetLetter)!.push({
+          ...planet,
+          isDefault: default_flag === 1
+        });
+        return; // Skip normal processing for TRAPPIST-1
+      }
       
-      // Skip entries with missing essential data
+      // Normal processing for non-TRAPPIST-1 systems
       if (isNaN(planet.ra) || isNaN(planet.dec) || isNaN(planet.sy_dist)) {
-        //console.log('Missing coordinates for', hostname, ':', {
-          //ra: columns[raIndex],
-          //dec: columns[decIndex],
-          //dist: columns[distIndex]
-        //});
         skippedMissingCoords++;
         return;
       }
-
-      // Skip entries with missing temperature
       if (isNaN(planet.st_teff)) {
         skippedMissingTemp++;
         return;
       }
       
-      // If we already have this system, just add the planet to it
+      // Add non-TRAPPIST-1 planets to their systems
       if (systemsMap.has(hostname)) {
         const system = systemsMap.get(hostname)!;
         system.planets.push(planet);
       } else {
-        // Create new system with this planet
         systemsMap.set(hostname, {
           hostname: hostname,
           ra: planet.ra,
@@ -252,6 +260,64 @@ export async function loadExoplanetData(): Promise<ExoplanetSystem[]> {
         validSystems++;
       }
     });
+
+    // Process TRAPPIST-1 entries after collecting all data
+    if (trappistEntriesMap.size > 0) {
+      const trappistSystem: ExoplanetSystem = {
+        hostname: 'TRAPPIST-1',
+        ra: 346.6263919,
+        dec: -5.0434618,
+        sy_dist: 12.43,
+        planets: [],
+        st_teff: 2566,
+        st_teff_err1: null,
+        st_teff_err2: null,
+        st_rad: 0.12,
+        st_rad_err1: null,
+        st_rad_err2: null,
+        st_mass: 0.09,
+        st_mass_err1: null,
+        st_mass_err2: null,
+        st_age: 7.6,
+        st_age_err1: null,
+        st_age_err2: null
+      };
+
+      // For each planet letter, choose the best entry
+      for (const [letter, entries] of trappistEntriesMap.entries()) {
+        // First try to find an entry with default_flag=1
+        let bestEntry = entries.find(e => e.isDefault);
+        
+        // If no default entry, use the most recent entry (based on rowupdate)
+        if (!bestEntry) {
+          bestEntry = entries.reduce((latest, current) => {
+            if (!latest) return current;
+            return new Date(current.rowupdate) > new Date(latest.rowupdate) ? current : latest;
+          });
+        }
+
+        if (bestEntry) {
+          // Fill in any missing coordinates with system defaults
+          if (isNaN(bestEntry.ra)) bestEntry.ra = trappistSystem.ra;
+          if (isNaN(bestEntry.dec)) bestEntry.dec = trappistSystem.dec;
+          if (isNaN(bestEntry.sy_dist)) bestEntry.sy_dist = trappistSystem.sy_dist;
+          if (isNaN(bestEntry.st_teff)) bestEntry.st_teff = trappistSystem.st_teff;
+          
+          trappistSystem.planets.push(bestEntry);
+        }
+      }
+
+      // Sort planets by their letter
+      trappistSystem.planets.sort((a, b) => {
+        const letterA = a.pl_name.split(' ')[1];
+        const letterB = b.pl_name.split(' ')[1];
+        return letterA.localeCompare(letterB);
+      });
+
+      // Add TRAPPIST-1 system to the systems map
+      systemsMap.set('TRAPPIST-1', trappistSystem);
+      validSystems++;
+    }
     
     const systems = Array.from(systemsMap.values());
     

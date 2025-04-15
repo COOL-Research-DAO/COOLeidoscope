@@ -53,6 +53,7 @@ interface SceneProps {
   setIsPaused: React.Dispatch<React.SetStateAction<boolean>>;
   activeFilters: FilterOption[];
   colorByField: string | null;
+  systems: ExoplanetSystem[];
 }
 
 export interface SceneHandle {
@@ -68,10 +69,10 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
   isPaused,
   setIsPaused,
   activeFilters,
-  colorByField
+  colorByField,
+  systems,
 }, ref) => {
   
-  const [systems, setSystems] = useState<ExoplanetSystem[]>([]);
   const [scale, setScale] = useState(1);
   const [highlightedSystem, setHighlightedSystem] = useState<ExoplanetSystem | null>(null);
   const { camera } = useThree();
@@ -212,18 +213,6 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
     focusOnStar
   }), [focusOnStar]);
 
-  useEffect(() => {
-    console.log('Starting to load exoplanet data...');
-    loadExoplanetData()
-      .then((data: ExoplanetSystem[]) => {
-        console.log('Data loaded successfully:', data.length, 'systems');
-        setSystems(data);
-      })
-      .catch((error: Error) => {
-        console.error('Error loading exoplanet data:', error);
-      });
-  }, []);
-
   // Handle search
   useEffect(() => {
     if (!searchQuery || searchQuery.length < 2) {
@@ -231,22 +220,28 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
       return;
     }
     
-    const searchLower = searchQuery.toLowerCase();
-    const foundSystem = systems.find(system => 
-      system.hostname.toLowerCase().includes(searchLower) ||
-      system.planets.some(planet => planet.pl_name.toLowerCase().includes(searchLower))
-    );
+    // Normalize search query: convert to lowercase and remove special characters except hyphens
+    const searchNormalized = searchQuery.toLowerCase().replace(/[^a-z0-9-]/g, '');
+    
+    const foundSystem = systems.find(system => {
+      // Normalize system hostname the same way
+      const hostnameNormalized = system.hostname.toLowerCase().replace(/[^a-z0-9-]/g, '');
+      
+      // Check if any planet name matches (also normalized)
+      const planetMatches = system.planets.some(planet => {
+        const planetNameNormalized = planet.pl_name.toLowerCase().replace(/[^a-z0-9-]/g, '');
+        return planetNameNormalized.includes(searchNormalized);
+      });
+      
+      return hostnameNormalized.includes(searchNormalized) || planetMatches;
+    });
     
     if (foundSystem) {
-      // Only highlight the system, don't focus the camera yet
       setHighlightedSystem(foundSystem);
-      // Remove the automatic camera focus
-      // focusOnStar(foundSystem);
-      // Don't call onStarFound yet, wait for explicit completion
     } else {
       setHighlightedSystem(null);
     }
-  }, [searchQuery, systems, camera]);
+  }, [searchQuery, systems]);
   
   // Calculate which systems are far away based on camera distance
   const farThreshold = 50;
@@ -523,7 +518,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
         rotateSpeed={0.3}
         panSpeed={1.0}
         zoomSpeed={1.0}
-        minDistance={0.1/206265} // 1 AU
+        minDistance={0.0001/206265} // 1 AU
         maxDistance={10000} // 10000 parsecs 
         screenSpacePanning={true}
         target={[0, 0, 0]}
@@ -555,7 +550,11 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
   const [colorByField, setColorByField] = useState<string | null>(null);
 
   useEffect(() => {
-    loadExoplanetData().then(setSystems);
+    console.log('Loading exoplanet data...');
+    loadExoplanetData().then(data => {
+      console.log('Loaded systems:', data.length);
+      setSystems(data);
+    });
   }, []);
 
   // Update suggestions when search query changes
@@ -570,15 +569,24 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
     }
 
     searchTimeoutRef.current = setTimeout(() => {
+      console.log('Searching for:', searchQuery);
+      console.log('Number of systems:', systems.length);
+      
       const searchLower = searchQuery.toLowerCase();
       const matches = systems
-        .filter(system => 
-          system.hostname.toLowerCase().includes(searchLower) ||
-          system.planets.some(planet => planet.pl_name.toLowerCase().includes(searchLower))
-        )
-        .slice(0, 5); // Limit to 5 suggestions
+        .filter(system => {
+          const hostnameMatch = system.hostname.toLowerCase().includes(searchLower);
+          const planetMatch = system.planets.some(planet => 
+            planet.pl_name?.toLowerCase().includes(searchLower)
+          );
+          return hostnameMatch || planetMatch;
+        })
+        .slice(0, 5);
+
+      console.log('Found matches:', matches.length);
+      console.log('Matches:', matches.map(m => m.hostname));
       setSuggestions(matches);
-    }, 300); // Debounce delay
+    }, 300);
 
     return () => {
       if (searchTimeoutRef.current) {
@@ -590,12 +598,22 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
   // Handle search input key press
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && searchQuery.length >= 2) {
+      // Normalize search query: convert to lowercase and remove special characters except hyphens
+      const searchNormalized = searchQuery.toLowerCase().replace(/[^a-z0-9-]/g, '');
+      
       // Find the system
-      const searchLower = searchQuery.toLowerCase();
-      const foundSystem = systems.find(system => 
-        system.hostname.toLowerCase().includes(searchLower) ||
-        system.planets.some(planet => planet.pl_name.toLowerCase().includes(searchLower))
-      );
+      const foundSystem = systems.find(system => {
+        // Normalize system hostname the same way
+        const hostnameNormalized = system.hostname.toLowerCase().replace(/[^a-z0-9-]/g, '');
+        
+        // Check if any planet name matches (also normalized)
+        const planetMatches = system.planets.some(planet => {
+          const planetNameNormalized = planet.pl_name.toLowerCase().replace(/[^a-z0-9-]/g, '');
+          return planetNameNormalized.includes(searchNormalized);
+        });
+        
+        return hostnameNormalized.includes(searchNormalized) || planetMatches;
+      });
       
       if (foundSystem) {
         // Now focus the camera on the star
@@ -621,13 +639,26 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           .suggestion-item:hover {
             background-color: rgba(255, 255, 255, 0.1);
           }
+          .suggestions-container {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background-color: rgba(0, 0, 0, 0.9);
+            border: 1px solid #666;
+            border-radius: 4px;
+            margin-top: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1001;
+          }
         `}
       </style>
       <Canvas
         camera={{ 
           position: [0, 0, 50],
           fov: 45, 
-          near: 0.1/206265,
+          near: 0.0001/206265,
           far: 10000 * 206265
         }}
         gl={{ 
@@ -649,11 +680,11 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
             setCompactSystem(null);
           }}
           onStarDoubleClick={(system) => {
-            // Only update if this isn't the system we just searched for
             if (system.hostname !== lastSearchedSystem) {
               setCompactSystem(system);
               setSelectedSystem(null);
               setLastSearchedSystem(null);
+              setIsPaused(false);
             }
           }}
           searchQuery={searchQuery}
@@ -661,13 +692,14 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
             setCompactSystem(system);
             setSelectedSystem(null);
             setLastSearchedSystem(system.hostname);
-            // Don't clear search automatically
+            setIsPaused(false);
           }}
           sizeScale={sizeScale}
           isPaused={isPaused}
           setIsPaused={setIsPaused}
           activeFilters={activeFilters}
           colorByField={colorByField}
+          systems={systems}
         />
       </Canvas>
       
@@ -727,7 +759,10 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
             type="text"
             placeholder="Search for stars or planets... (min. 2 chars)"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              console.log('Search input changed:', e.target.value);
+              setSearchQuery(e.target.value);
+            }}
             onKeyDown={handleSearchKeyDown}
             style={{
               padding: '0.5rem',
@@ -739,27 +774,14 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
             }}
           />
           {suggestions.length > 0 && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              right: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.9)',
-              border: '1px solid #666',
-              borderRadius: '4px',
-              marginTop: '4px',
-              maxHeight: '200px',
-              overflowY: 'auto',
-            }}>
+            <div className="suggestions-container">
               {suggestions.map((system) => (
                 <div
                   key={system.hostname}
                   onClick={() => {
-                    // Focus the camera on the selected star
                     if (sceneRef.current) {
                       sceneRef.current.focusOnStar(system);
                     }
-                    
                     setSearchQuery('');
                     setCompactSystem(system);
                     setSelectedSystem(null);

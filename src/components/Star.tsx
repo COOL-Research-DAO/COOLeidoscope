@@ -72,17 +72,19 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
     return (semiMajorAxis * (1 - eccentricity)) / 206265; // Convert AU to parsecs
   }));
   
-  // Maximum star size should be half the closest perihelion
-  const maxScale = (closestPerihelion * 0.5) / realSizeInParsecs;
+  // Maximum star size should be 1/3 of the closest perihelion
+  const maxStarSize = closestPerihelion / 3;
   
   // Calculate scale factor based on slider (0 to 1)
   const sliderRange = props.systemMaxScale - 1;
   const t = Math.max(0, Math.min(1, (props.sizeScale - 1) / sliderRange));
   
-  // Final radius combines real size and maximum allowed scale
+  // Final radius combines real size and maximum allowed scale, capped by closest perihelion
   const starRadius = useMemo(() => {
     if (distanceToCamera <= 0.01) {
-      return realSizeInParsecs * (1 + t * maxScale);
+      // When very close, scale up to max allowed size based on slider
+      const maxScaleFactor = maxStarSize / realSizeInParsecs;
+      return realSizeInParsecs * (1 + t * maxScaleFactor);
     } else if (distanceToCamera <= 0.1) {
       // Transition between real size and standard scaling
       const t = (distanceToCamera - 0.01) / (0.1 - 0.01); // 0 to 1
@@ -99,7 +101,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
       const t = (distanceToCamera - 50) / 50; // Factor for gradual decrease
       return 0.004 * 50 * Math.pow(0.9, t); // Decrease by 10% for each 50pc step
     }
-  }, [distanceToCamera, realSizeInParsecs, t, maxScale]);
+  }, [distanceToCamera, realSizeInParsecs, t, maxStarSize]);
 
   // Calculate color (used for point light and fallback)
   const color = useMemo(() => {

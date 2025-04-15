@@ -7,6 +7,9 @@ export interface Exoplanet {
   disc_refname: string;
   pl_refname: string;
   
+  // Metadata
+  isDefault?: boolean; // Whether this is the default entry for this planet
+  
   // Orbital parameters
   pl_orbper: number | null; // Orbital period in days
   pl_orbper_err1: number | null;
