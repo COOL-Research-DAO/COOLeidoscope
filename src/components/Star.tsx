@@ -5,7 +5,7 @@ import { Text, Billboard } from '@react-three/drei';
 import { ExoplanetSystem } from '../types/Exoplanet';
 import { Planets } from './Planets';
 import { FilterOption } from './FilterPanel';
-import { getViridisColor } from '../utils/colorUtils';
+import { getViridisColor, temperatureToColor } from '../utils/colorUtils';
 
 // Global texture singleton for all stars to share
 let globalStarTexture: THREE.Texture | null = null;
@@ -53,11 +53,14 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
   const { camera } = useThree();
   const [starTexture, setStarTexture] = useState<THREE.Texture | null>(null);
   const [isLoadingTexture, setIsLoadingTexture] = useState(false);
+  const starRef = useRef<THREE.Mesh>(null);
+  const rotationAngleRef = useRef(0);
   
   const distanceToCamera = new THREE.Vector3(...props.position).distanceTo(camera.position);
   const showPlanets = distanceToCamera < 10; // Show planets within 10 parsecs
-  const showImage = distanceToCamera < 2; // Only load textures when very close
-  const showGlow = distanceToCamera >= 2; // Glow effect for all non-close stars
+  const showImage = distanceToCamera < 0.1; // Only load textures when extremely close (0.1 parsecs)
+  const showRotation = distanceToCamera < 0.1; // Only rotate when extremely close (same as texture threshold)
+  const showGlow = !showImage; // Glow effect for all non-textured stars
   
   // Calculate star radius using real astronomical scales
   const realStarRadius = system.st_rad || 1; // Solar radii, default to 1 if unknown
@@ -105,8 +108,13 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
 
   // Calculate color (used for point light and fallback)
   const color = useMemo(() => {
-    if (!colorByField || colorByValue === null) {
-      return new THREE.Color(0xFFFF00); // Default yellow
+    if (!colorByField) {
+      return new THREE.Color(0xFFFF00); // Default yellow when no filter
+    }
+    
+    // Return white for null or NaN values when filter is applied
+    if (colorByValue === null || isNaN(colorByValue)) {
+      return new THREE.Color(0xFFFFFF);
     }
     
     const filter = props.activeFilters?.find(f => f.field === colorByField);
@@ -120,44 +128,31 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
     return getViridisColor(colorByValue, range?.min || 0, range?.max || 1, true);
   }, [colorByField, colorByValue, props.activeFilters, system.planets.length]);
 
+  // Handle star rotation - only at extremely close distances
+  useFrame((state, delta) => {
+    if (!showRotation || props.isPaused || !starRef.current) return;
+
+    // Get rotation period in days, default to Sun's rotation period if not available
+    const rotationPeriod = system.st_rotp || 24.47;
+
+    // Convert rotation period to radians per second
+    const rotationSpeed = (2 * Math.PI) / (rotationPeriod * 24 * 60 * 60);
+
+    // Update rotation angle
+    rotationAngleRef.current += rotationSpeed * delta * 100000; // Scale up for visibility
+    
+    // Apply rotation
+    starRef.current.rotation.y = rotationAngleRef.current;
+  });
+
   // Only load textures when we're actually showing them
   useEffect(() => {
-    if (showImage && !starTexture && !isLoadingTexture) {
+    if (showImage && !starTexture && !isLoadingTexture && !globalStarTexture) {
       setIsLoadingTexture(true);
       
       const textureLoader = new THREE.TextureLoader();
       textureLoader.load(
         '/images/2k_sun.jpg',
-        (texture) => {
-          // Configure texture for optimal appearance
-          texture.flipY = false;
-          texture.wrapS = THREE.RepeatWrapping;
-          texture.wrapT = THREE.RepeatWrapping;
-          texture.minFilter = THREE.LinearFilter;
-          texture.magFilter = THREE.LinearFilter;
-          texture.anisotropy = 16; // Increase anisotropy for better quality when viewed at an angle
-          texture.needsUpdate = true;
-          setStarTexture(texture);
-          setIsLoadingTexture(false);
-        },
-        undefined,
-        (error) => {
-          console.error("Error loading star texture:", error);
-          setIsLoadingTexture(false);
-        }
-      );
-    }
-  }, [showImage, starTexture, isLoadingTexture]);
-
-  // Use a global texture for all stars (singleton pattern)
-  useEffect(() => {
-    // Only load the global texture when we might show images
-    if (showImage && !globalStarTexture && !isLoadingGlobalTexture) {
-      isLoadingGlobalTexture = true;
-      
-      const textureLoader = new THREE.TextureLoader();
-      textureLoader.load(
-        '/images/2k_sun.jpg', 
         (texture) => {
           texture.flipY = false;
           texture.wrapS = THREE.RepeatWrapping;
@@ -166,24 +161,20 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
           texture.magFilter = THREE.LinearFilter;
           texture.anisotropy = 16;
           texture.needsUpdate = true;
+          setStarTexture(texture);
+          setIsLoadingTexture(false);
           globalStarTexture = texture;
-          isLoadingGlobalTexture = false;
-          // Update this star's texture too
-          if (!starTexture) {
-            setStarTexture(texture);
-          }
         },
         undefined,
         (error) => {
-          console.error("Error loading global star texture:", error);
-          isLoadingGlobalTexture = false;
+          console.error("Error loading star texture:", error);
+          setIsLoadingTexture(false);
         }
       );
     } else if (showImage && globalStarTexture && !starTexture) {
-      // Use already loaded global texture
       setStarTexture(globalStarTexture);
     }
-  }, [starTexture, showImage]);
+  }, [showImage, starTexture, isLoadingTexture]);
 
   // Common elements
   const labelElement = (hovered || props.isHighlighted) && (
@@ -230,6 +221,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
           </mesh>
         }>
           <mesh
+            ref={starRef}
             onPointerOver={() => setHovered(true)}
             onPointerOut={() => setHovered(false)}
             onClick={props.onClick}
@@ -254,6 +246,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
         <>
           {/* Core star */}
           <mesh
+            ref={starRef}
             onPointerOver={() => setHovered(true)}
             onPointerOut={() => setHovered(false)}
             onClick={props.onClick}

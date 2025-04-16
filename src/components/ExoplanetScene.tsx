@@ -15,6 +15,7 @@ import { ColorLegend } from './ColorLegend';
 import { FilterPanel, systemMatchesFilters } from './FilterPanel';
 import { FaFilter } from 'react-icons/fa';
 import Star from './Star';
+import { ScaleBar, ScaleBarUpdater } from './ScaleBar';
 
 /**
  * Three.js Coordinate System:
@@ -471,7 +472,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
     focusOnPlanet(system, planetIndex);
     // Optionally set other state like compactSystem if needed
   };
-
+  
   return (
     <>
       <ambientLight intensity={1.0} />
@@ -581,7 +582,19 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           );
           return hostnameMatch || planetMatch;
         })
-        .slice(0, 5);
+        .sort((a, b) => {
+          const aName = a.hostname.toLowerCase();
+          const bName = b.hostname.toLowerCase();
+          // Exact matches first
+          if (aName === searchLower) return -1;
+          if (bName === searchLower) return 1;
+          // Then matches at start of name
+          if (aName.startsWith(searchLower) && !bName.startsWith(searchLower)) return -1;
+          if (bName.startsWith(searchLower) && !aName.startsWith(searchLower)) return 1;
+          // Then alphabetical
+          return aName.localeCompare(bName);
+        })
+        .slice(0, 10);
 
       console.log('Found matches:', matches.length);
       console.log('Matches:', matches.map(m => m.hostname));
@@ -701,7 +714,9 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           colorByField={colorByField}
           systems={systems}
         />
+        <ScaleBarUpdater />
       </Canvas>
+      <ScaleBar />
       
       {/* Size scale slider */}
       <div 

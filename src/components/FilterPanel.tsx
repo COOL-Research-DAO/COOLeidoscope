@@ -11,6 +11,7 @@ interface FilterRange {
     min: number;
     max: number;
   };
+  useLog?: boolean;
 }
 
 export interface FilterOption {
@@ -58,6 +59,13 @@ export function FilterPanel({ systems, onFiltersChange, onColorByChange, isOpen,
         field: 'st_rad',
         type: 'range',
         range: initializeRange(systems, 'st_rad'),
+        colorBy: false
+      },
+      {
+        label: 'Star Age (Gyr)',
+        field: 'st_age',
+        type: 'range',
+        range: initializeRange(systems, 'st_age'),
         colorBy: false
       },
       {
@@ -115,36 +123,58 @@ export function FilterPanel({ systems, onFiltersChange, onColorByChange, isOpen,
       };
     }
     
-    // Calculate full range
-    let fullMin = Math.min(...values);
-    let fullMax = Math.max(...values);
+    // Calculate percentile range for all filters
+    let rangeMin = calculatePercentile(values, 1);
+    let rangeMax = calculatePercentile(values, 99);
     
-    // Calculate percentile range
-    let colorMin = calculatePercentile(values, 1);
-    let colorMax = calculatePercentile(values, 99);
-    
-    // Special handling for distance
-    if (field === 'sy_dist') {
-      fullMin = 1.288; // 4.2 light years in parsecs
-      colorMin = 1.288;
+    // Special handling for specific fields
+    switch (field) {
+      case 'sy_dist':
+        rangeMin = 1.288; // 4.2 light years in parsecs
+        rangeMax = Math.min(500, rangeMax); // Cap at 1000 parsecs
+        // Convert to log scale
+        return {
+          min: rangeMin,
+          max: rangeMax,
+          currentMin: rangeMin,
+          currentMax: rangeMax,
+          colorRange: {
+            min: rangeMin,
+            max: rangeMax
+          },
+          useLog: true // Add flag for log scale
+        };
+      
+      case 'planetCount':
+        rangeMin = 1;
+        rangeMax = Math.max(...values);
+        break;
+      
+      case 'st_teff':
+        rangeMin = Math.max(2000, rangeMin);
+        rangeMax = Math.min(7000, rangeMax);
+        break;
+      
+      case 'st_mass':
+        rangeMin = Math.max(0.08, rangeMin); // Brown dwarf limit
+        rangeMax = Math.min(150, rangeMax);  // Theoretical upper mass limit
+        break;
+      
+      case 'st_rad':
+        rangeMin = Math.max(0.08, rangeMin); // Minimum main sequence radius
+        rangeMax = Math.min(1000, rangeMax); // Reasonable upper limit for giants
+        break;
     }
     
-    // Special handling for planet count
-    if (field === 'planetCount') {
-      fullMin = 1;
-      colorMin = 1;
-      // Use full range for planet count
-      colorMax = fullMax;
-    }
-    
+    // Use the same range for both slider and color
     return {
-      min: fullMin,
-      max: fullMax,
-      currentMin: fullMin,
-      currentMax: fullMax,
+      min: rangeMin,
+      max: rangeMax,
+      currentMin: rangeMin,
+      currentMax: rangeMax,
       colorRange: {
-        min: colorMin,
-        max: colorMax
+        min: rangeMin,
+        max: rangeMax
       }
     };
   }
@@ -256,11 +286,11 @@ export function FilterPanel({ systems, onFiltersChange, onColorByChange, isOpen,
 
       {filters.map((filter, index) => (
         <div key={filter.field} style={{ marginBottom: '20px' }}>
-          <h3 style={{ marginBottom: '10px' }}>{filter.label}</h3>
+          <h3 style={{ marginBottom: '5px' }}>{filter.label}</h3>
           
           {filter.type === 'range' && filter.range && (
-            <div style={{ padding: '20px 10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '25px' }}>
+            <div style={{ padding: '10px 10px 5px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px' }}>
                 <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
                   <input
                     type="checkbox"
@@ -320,6 +350,64 @@ export function FilterPanel({ systems, onFiltersChange, onColorByChange, isOpen,
                           fontSize: '12px',
                         }}>
                           {[filter.range!.currentMin, filter.range!.currentMax][index].toFixed(2)}
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+              ) : filter.field === 'sy_dist' ? (
+                <Range
+                  key={`range-${filter.field}`}
+                  step={0.01}
+                  min={Math.log10(filter.range.min)}
+                  max={Math.log10(filter.range.max)}
+                  values={[
+                    Math.log10(filter.range.currentMin),
+                    Math.log10(filter.range.currentMax)
+                  ]}
+                  onChange={(values) => handleRangeChange(index, 
+                    Math.pow(10, values[0]), 
+                    Math.pow(10, values[1])
+                  )}
+                  renderTrack={({ props, children }) => (
+                    <div
+                      {...props}
+                      style={{
+                        ...props.style,
+                        height: '4px',
+                        width: '100%',
+                        backgroundColor: '#333',
+                        borderRadius: '2px',
+                      }}
+                    >
+                      {children}
+                    </div>
+                  )}
+                  renderThumb={({ props, index }) => {
+                    const { key, ...thumbProps } = props;
+                    const value = Math.pow(10, [Math.log10(filter.range!.currentMin), Math.log10(filter.range!.currentMax)][index]);
+                    return (
+                      <div
+                        key={key}
+                        {...thumbProps}
+                        style={{
+                          ...thumbProps.style,
+                          height: '20px',
+                          width: '20px',
+                          borderRadius: '50%',
+                          backgroundColor: '#666',
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div style={{
+                          position: 'absolute',
+                          top: '-20px',
+                          color: 'white',
+                          fontSize: '12px',
+                        }}>
+                          {value.toFixed(1)}
                         </div>
                       </div>
                     );

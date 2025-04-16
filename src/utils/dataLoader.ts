@@ -54,6 +54,10 @@ export async function loadExoplanetData(): Promise<ExoplanetSystem[]> {
     const raIndex = headers.findIndex(h => h === 'ra');
     const decIndex = headers.findIndex(h => h === 'dec');
     const distIndex = headers.findIndex(h => h === 'sy_dist');
+    const stRotpIndex = headers.findIndex(h => h === 'st_rotp');
+    const stRotpErr1Index = headers.findIndex(h => h === 'st_rotperr1');
+    const stRotpErr2Index = headers.findIndex(h => h === 'st_rotperr2');
+    const stRotpLimIndex = headers.findIndex(h => h === 'st_rotplim');
 
     // Debug column indices
     console.log('Column indices:', {
@@ -136,7 +140,11 @@ export async function loadExoplanetData(): Promise<ExoplanetSystem[]> {
         sy_dist: 0.0000048,
         ra: 0,
         dec: 0,
-        rowupdate: ''
+        rowupdate: '',
+        st_rotp: 24.47,
+        st_rotperr1: null,
+        st_rotperr2: null,
+        st_rotplim: null
       })),
       st_teff: 5778,
       st_teff_err1: null,
@@ -149,7 +157,11 @@ export async function loadExoplanetData(): Promise<ExoplanetSystem[]> {
       st_mass_err2: null,
       st_age: 4.6,
       st_age_err1: null,
-      st_age_err2: null
+      st_age_err2: null,
+      st_rotp: 24.47,
+      st_rotperr1: null,
+      st_rotperr2: null,
+      st_rotplim: null
     });
     validSystems++;
     
@@ -207,7 +219,11 @@ export async function loadExoplanetData(): Promise<ExoplanetSystem[]> {
         sy_dist: parseFloat(columns[distIndex]),
         ra: parseFloat(columns[raIndex]),
         dec: parseFloat(columns[decIndex]),
-        rowupdate: columns[columns.length - 1]
+        rowupdate: columns[columns.length - 1],
+        st_rotp: parseFloat(columns[stRotpIndex]) || null,
+        st_rotperr1: parseFloat(columns[stRotpErr1Index]) || null,
+        st_rotperr2: parseFloat(columns[stRotpErr2Index]) || null,
+        st_rotplim: columns[stRotpLimIndex] || null
       };
 
       // For TRAPPIST-1, collect all entries
@@ -255,7 +271,11 @@ export async function loadExoplanetData(): Promise<ExoplanetSystem[]> {
           st_mass_err2: planet.st_mass_err2,
           st_age: parseFloat(columns[stAgeIndex]) || null,
           st_age_err1: parseFloat(columns[stAgeErr1Index]) || null,
-          st_age_err2: parseFloat(columns[stAgeErr2Index]) || null
+          st_age_err2: parseFloat(columns[stAgeErr2Index]) || null,
+          st_rotp: parseFloat(columns[stRotpIndex]) || null,
+          st_rotperr1: parseFloat(columns[stRotpErr1Index]) || null,
+          st_rotperr2: parseFloat(columns[stRotpErr2Index]) || null,
+          st_rotplim: columns[stRotpLimIndex] || null
         });
         validSystems++;
       }
@@ -280,7 +300,11 @@ export async function loadExoplanetData(): Promise<ExoplanetSystem[]> {
         st_mass_err2: null,
         st_age: 7.6,
         st_age_err1: null,
-        st_age_err2: null
+        st_age_err2: null,
+        st_rotp: 3.3,
+        st_rotperr1: null,
+        st_rotperr2: null,
+        st_rotplim: null
       };
 
       // For each planet letter, choose the best entry

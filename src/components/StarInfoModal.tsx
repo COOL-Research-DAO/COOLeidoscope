@@ -113,6 +113,7 @@ export function StarInfoModal({ system, onClose, compact }: StarInfoModalProps) 
             <p>Mass: {formatError(system.st_mass, system.st_mass_err1, system.st_mass_err2)}{system.st_mass !== null && !isNaN(system.st_mass) ? ' M☉' : ''}</p>
             <p>Age: {formatError(system.st_age, system.st_age_err1, system.st_age_err2)}{system.st_age !== null && !isNaN(system.st_age) ? ' Gyr' : ''}</p>
             <p>Temperature: {formatError(system.st_teff, system.st_teff_err1, system.st_teff_err2)}{system.st_teff !== null && !isNaN(system.st_teff) ? 'K' : ''}</p>
+            <p>Rotation Period: {formatError(system.st_rotp, system.st_rotperr1, system.st_rotperr2)}{system.st_rotp !== null && !isNaN(system.st_rotp) ? ' days' : ''}{system.st_rotplim ? ` (${system.st_rotplim})` : ''}</p>
           </div>
 
           {!compact && (
@@ -179,6 +180,7 @@ export function StarInfoModal({ system, onClose, compact }: StarInfoModalProps) 
             <p>Mass: {formatError(system.st_mass, system.st_mass_err1, system.st_mass_err2)}{system.st_mass !== null && !isNaN(system.st_mass) ? ' M☉' : ''}</p>
             <p>Age: {formatError(system.st_age, system.st_age_err1, system.st_age_err2)}{system.st_age !== null && !isNaN(system.st_age) ? ' Gyr' : ''}</p>
             <p>Temperature: {formatError(system.st_teff, system.st_teff_err1, system.st_teff_err2)}{system.st_teff !== null && !isNaN(system.st_teff) ? 'K' : ''}</p>
+            <p>Rotation Period: {formatError(system.st_rotp, system.st_rotperr1, system.st_rotperr2)}{system.st_rotp !== null && !isNaN(system.st_rotp) ? ' days' : ''}{system.st_rotplim ? ` (${system.st_rotplim})` : ''}</p>
           </div>
 
           {!compact && (
