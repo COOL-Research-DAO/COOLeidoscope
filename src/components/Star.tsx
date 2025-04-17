@@ -18,9 +18,11 @@ const glowTexture = (() => {
   canvas.height = 64;
   const ctx = canvas.getContext('2d')!;
   const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
-  gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.3)');
-  gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');   // Core
+  gradient.addColorStop(0.1, 'rgba(255, 255, 255, 0.8)'); // Inner halo
+  gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.4)'); // Transition
+  gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.2)'); // Outer halo start
+  gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');     // Fade to transparent
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 64, 64);
   const texture = new THREE.CanvasTexture(canvas);
@@ -109,7 +111,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
   // Calculate color (used for point light and fallback)
   const color = useMemo(() => {
     if (!colorByField) {
-      return new THREE.Color(0xFFFF00); // Default yellow when no filter
+      return new THREE.Color(0xffff4f); // Default bright yellow when no filter
     }
     
     // Return white for null or NaN values when filter is applied
@@ -135,8 +137,8 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
     // Get rotation period in days, default to Sun's rotation period if not available
     const rotationPeriod = system.st_rotp || 24.47;
 
-    // Convert rotation period to radians per second
-    const rotationSpeed = (2 * Math.PI) / (rotationPeriod * 24 * 60 * 60);
+    // Convert rotation period to radians per second (negative to match planet rotation direction)
+    const rotationSpeed = -(2 * Math.PI) / (rotationPeriod * 24 * 60 * 60);
 
     // Update rotation angle
     rotationAngleRef.current += rotationSpeed * delta * 100000; // Scale up for visibility
@@ -227,6 +229,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
             onClick={props.onClick}
             onDoubleClick={props.onDoubleClick}
             scale={[starRadius, starRadius, starRadius]}
+            userData={{ type: 'star', hostname: system.hostname }}
           >
             <sphereGeometry args={[1, 64, 64]} /> {/* Higher resolution geometry */}
             <meshBasicMaterial
@@ -252,6 +255,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
             onClick={props.onClick}
             onDoubleClick={props.onDoubleClick}
             scale={[starRadius, starRadius, starRadius]}
+            userData={{ type: 'star', hostname: system.hostname }}
           >
             <sphereGeometry args={[1, 16, 16]} />
             <meshBasicMaterial
@@ -264,7 +268,22 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
           
           {/* Gradient glow effect */}
           <Billboard>
-            <mesh scale={[starRadius * 8.0, starRadius * 8.0, 1]}>
+            {/* Outer halo */}
+            <mesh scale={[starRadius * 16.0, starRadius * 16.0, 1]}>
+              <planeGeometry args={[1, 1]} />
+              <meshBasicMaterial
+                color={color}
+                transparent={true}
+                opacity={props.isFiltered ? 0.09 : 0.6}
+                depthWrite={false}
+                side={THREE.DoubleSide}
+                map={glowTexture}
+                alphaMap={glowTexture}
+                blending={THREE.AdditiveBlending}
+              />
+            </mesh>
+            {/* Inner halo */}
+            <mesh scale={[starRadius * 4.0, starRadius * 4.0, 1]}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}

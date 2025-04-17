@@ -57,12 +57,19 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   const textureLoader = useMemo(() => new THREE.TextureLoader(), []);
 
   // Moon orbit calculation functions
+  const getEarthVenusGap = () => {
+    const venusPerihelion = (0.723 * (1 - 0.007)) / 206265; // Venus's perihelion in parsecs
+    const earthPerihelion = (1.0 * (1 - 0.017)) / 206265; // Earth's perihelion in parsecs
+    return (earthPerihelion - venusPerihelion) * (3/5); // 2/3 of the gap
+  };
+
   const getMoonOrbitRadius = () => {
     const baseOrbitRadius = (0.00256 / 206265); // Convert AU to parsecs
     const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1;
     const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 0;
-    // Apply square root scaling for smoother growth
-    return baseOrbitRadius * (1 + Math.sqrt(t * (cappedSystemPlanetMaxScale - 1)));
+    // Scale up to Earth-Venus gap
+    const maxOrbitRadius = getEarthVenusGap();
+    return baseOrbitRadius * (1 + t * (maxOrbitRadius / baseOrbitRadius - 1));
   };
 
   const createMoonOrbitPoints = (earthSize: number) => {
@@ -840,6 +847,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                   e.stopPropagation(); 
                   handlePlanetDoubleClick(index); 
                 }}
+                userData={{ type: 'planet', hostname: system.hostname, index }}
               >
                 <sphereGeometry args={[planetSizes[index], 32, 32]} />
                 <primitive object={planetShaders.current[index]} />

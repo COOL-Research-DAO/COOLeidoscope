@@ -84,6 +84,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
   const [cameraDistance, setCameraDistance] = useState(0);
   const [universeOffset, setUniverseOffset] = useState(new THREE.Vector3(0, 0, 0));
   const [useUniverseOffset, setUseUniverseOffset] = useState(true);
+  const [focusedObjectRadius, setFocusedObjectRadius] = useState<number>(0.0001/206265);
 
   // Handle space bar press
   useEffect(() => {
@@ -144,6 +145,13 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
   const focusOnStar = useCallback((system: ExoplanetSystem) => {
     const position = equatorialToCartesian(system.ra, system.dec, system.sy_dist);
     const targetPosition = new THREE.Vector3(...position);
+    
+    // Get the scaled star size from the first planet's reference (star size is stored with planet index -1)
+    const starSizeKey = `${system.hostname}--1-size`;
+    const scaledStarSize = planetSizesRef.current.get(starSizeKey);
+    if (scaledStarSize) {
+      setFocusedObjectRadius(scaledStarSize);
+    }
     
     // Longer duration for more visible travel
     const duration = 3.0;
@@ -208,7 +216,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
       startTime = time;
       animate(time);
     });
-  }, [camera, universeOffset]);
+  }, [camera, universeOffset, sizeScale]);
 
   useImperativeHandle(ref, () => ({
     focusOnStar
@@ -360,66 +368,15 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
     
     // Calculate planet-specific zoom parameters
     const planet = planetIndex >= 0 ? system.planets[planetIndex] : null;
-    const isMoon = planetIndex === -1; // Special case for Earth's moon
     
-    // Find Earth index if this is a moon focus
-    const earthIndex = isMoon ? system.planets.findIndex(p => 
-      p.pl_name?.toLowerCase().includes('earth')
-    ) : -1;
-    
-    // Determine planet position and appropriate zoom distance
-    let finalZoomDistance = 10;
-    
-    if (isMoon) {
-      // For the moon, we need to get Earth's current position and the moon's position relative to it
-      // First, place the star at origin
-      const endStarOffset = new THREE.Vector3(...starPosition);
-      
-      // Get Earth's current angle from our reference
-      const earthKey = `${system.hostname}-${earthIndex}`;
-      const earthAngle = planetAnglesRef.current.get(earthKey) || 0;
-      
-      // Get Earth's position from the Planets component (its current angle)
-      const earthPlanet = system.planets[earthIndex];
-      const earthOrbitRadius = (earthPlanet.pl_orbsmax || 
-        (earthPlanet.pl_orbper ? Math.pow(earthPlanet.pl_orbper / 365, 2/3) : earthIndex + 1)) / 206265;
-      
-      // Calculate Earth's current position using its current angle
-      const earthX = earthOrbitRadius * Math.cos(earthAngle);
-      const earthZ = earthOrbitRadius * Math.sin(earthAngle);
-      
-      // Get moon's current angle - for the moon we'll use a special key
-      const moonKey = `${system.hostname}-${-1}`;
-      const moonAngle = planetAnglesRef.current.get(moonKey) || 0;
-      
-      // Calculate moon position relative to Earth with current angle
-      const moonOrbitRadius = (0.00256 / 206265); // Moon orbit in parsecs
-      const moonX = moonOrbitRadius * Math.cos(moonAngle);
-      const moonZ = moonOrbitRadius * Math.sin(moonAngle);
-      
-      // Final moon position is Earth's position plus moon's relative position
-      const moonPosition = new THREE.Vector3(earthX + moonX, 0, earthZ + moonZ);
-      
-      // Offset that places moon at origin
-      const endOffset = endStarOffset.clone().add(moonPosition);
-      
-      // Get scaled moon size if available
-      const moonSizeKey = `${system.hostname}-${-1}-size`;
-      const scaledMoonSize = planetSizesRef.current.get(moonSizeKey);
-      
-      // Set zoom distance based on the moon's scaled size
-      if (scaledMoonSize) {
-        finalZoomDistance = scaledMoonSize * 5; // Reduced multiplier for closer zoom
-      } else {
-        // Fallback to original calculation if size not available
-        finalZoomDistance = moonOrbitRadius * 0.1;
+    if (planet) {
+      // Get the scaled planet size
+      const planetSizeKey = `${system.hostname}-${planetIndex}-size`;
+      const scaledPlanetSize = planetSizesRef.current.get(planetSizeKey);
+      if (scaledPlanetSize) {
+        setFocusedObjectRadius(scaledPlanetSize);
       }
       
-      // Start two-phase animation (first center, then zoom)
-      animatePlanetFocus(startOffset, endOffset, finalZoomDistance, initialCameraPos);
-
-    } else if (planet) {
-      // For regular planets, get the current position in its orbit
       // First, place the star at origin
       const endStarOffset = new THREE.Vector3(...starPosition);
       
@@ -439,33 +396,19 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
       // Offset that places planet at origin
       const endOffset = endStarOffset.clone().add(planetPosition);
       
-      // Get scaled planet size if available
-      const planetSizeKey = `${system.hostname}-${planetIndex}-size`;
-      const scaledPlanetSize = planetSizesRef.current.get(planetSizeKey);
-      
       // Set zoom distance based on the planet's scaled size
+      let finalZoomDistance;
       if (scaledPlanetSize) {
-        finalZoomDistance = scaledPlanetSize * 10; // Adjust multiplier as needed
+        finalZoomDistance = scaledPlanetSize * (10 / (1000 / sizeScale));
       } else {
-        // Fallback to original calculation
-        const earthRadiusInAU = 0.0000046491; // Earth radius in AU
-        const earthRadiusInParsecs = earthRadiusInAU / 206265;
-        
-        let planetSize = earthRadiusInParsecs; // Default to Earth size
-        if (planet.pl_rade) {
-          planetSize = planet.pl_rade * earthRadiusInParsecs;
-        } else if (planet.pl_masse) {
-          planetSize = Math.pow(planet.pl_masse, 1/3) * earthRadiusInParsecs;
-        }
-        
-        // Use a default scaling if we don't have the actual scaled size
-        finalZoomDistance = planetSize * 200;
+        // Fallback to a reasonable default if no size is available
+        finalZoomDistance = 0.0001/206265 * 200;
       }
       
       // Start two-phase animation (first center, then zoom)
       animatePlanetFocus(startOffset, endOffset, finalZoomDistance, initialCameraPos);
     }
-  }, [camera, universeOffset]);
+  }, [camera, universeOffset, sizeScale]);
 
   // Add planet double-click handler
   const handlePlanetDoubleClick = (system: ExoplanetSystem, planetIndex: number) => {
@@ -519,7 +462,17 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
         rotateSpeed={0.3}
         panSpeed={1.0}
         zoomSpeed={1.0}
-        minDistance={0.0001/206265} // 1 AU
+        minDistance={Math.max(focusedObjectRadius * (1.1 / (1000 / sizeScale)), 0.0001/206265)}
+        onUpdate={(self) => {
+          // If we're too close, force the camera back to minimum distance
+          const distance = camera.position.length();
+          const minDist = Math.max(focusedObjectRadius * (1.1 / (1000 / sizeScale)), 0.0001/206265);
+          if (distance < minDist) {
+            const direction = camera.position.clone().normalize();
+            camera.position.copy(direction.multiplyScalar(minDist));
+            self.target.set(0, 0, 0);
+          }
+        }}
         maxDistance={10000} // 10000 parsecs 
         screenSpacePanning={true}
         target={[0, 0, 0]}
@@ -669,8 +622,8 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       </style>
       <Canvas
         camera={{ 
-          position: [0, 0, 50],
-          fov: 45, 
+          position: [0, 20, 50],
+          fov: 60, 
           near: 0.0001/206265,
           far: 10000 * 206265
         }}
@@ -679,11 +632,21 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           alpha: true,
           powerPreference: "high-performance"
         }}
-        dpr={[1, 4]}
+        dpr={[1, 2]}
         frameloop="always"
         style={{ background: '#000' }}
-        onCreated={({ gl }) => {
+        onCreated={({ gl, scene, camera }) => {
           gl.setClearColor('#000000', 1);
+          // Add initial lighting
+          const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+          scene.add(ambientLight);
+          
+          const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+          directionalLight.position.set(0, 1, 0);
+          scene.add(directionalLight);
+          
+          // Adjust camera to look at origin
+          camera.lookAt(0, 0, 0);
         }}
       >
         <Scene 

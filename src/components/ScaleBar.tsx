@@ -19,20 +19,29 @@ function formatDistance(parsecs: number): { astro: string; light: string } {
   const lightDays = lightYears * 365.25;
   const lightMinutes = lightDays * 24 * 60;
 
-  if (parsecs >= 1) {
+  if (parsecs >= 0.01) {
     return {
-      astro: `${parsecs.toFixed(1)} pc`,
-      light: `${lightYears.toFixed(1)} ly`
+      astro: `${parsecs.toFixed(2)} pc`,
+      light: `${lightYears.toFixed(2)} ly`
     };
-  } else if (au >= 1) {
-    return {
-      astro: `${au.toFixed(1)} AU`,
-      light: `${lightDays.toFixed(1)} light days`
-    };
+  } else if (au >= 0.01) {
+    if (lightDays >= 0.01) {
+      return {
+        astro: `${au.toFixed(2)} AU`,
+        light: `${lightDays.toFixed(2)} light days`
+      };
+    } else {
+      return {
+        astro: `${au.toFixed(2)} AU`,
+        light: `${lightMinutes.toFixed(2)} light minutes`
+      };
+    }
   } else {
+    // Convert AU to km (1 AU = 149,597,870.7 km)
+    const km = au * 149597870.7;
     return {
-      astro: `${(au * 149597870.7).toFixed(0)} km`,
-      light: `${lightMinutes.toFixed(1)} light minutes`
+      astro: `${Math.round(km)} km`,
+      light: `${lightMinutes.toFixed(2)} light minutes`
     };
   }
 }
