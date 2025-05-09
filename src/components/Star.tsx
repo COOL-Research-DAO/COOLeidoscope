@@ -58,11 +58,17 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
   const starRef = useRef<THREE.Mesh>(null);
   const rotationAngleRef = useRef(0);
   
-  const distanceToCamera = new THREE.Vector3(...props.position).distanceTo(camera.position);
-  const showPlanets = distanceToCamera < 10; // Show planets within 10 parsecs
-  const showImage = distanceToCamera < 0.1; // Only load textures when extremely close (0.1 parsecs)
-  const showRotation = distanceToCamera < 0.1; // Only rotate when extremely close (same as texture threshold)
-  const showGlow = !showImage; // Glow effect for all non-textured stars
+  // Calculate distance and visibility flags in a single memo to prevent recalculation on hover
+  const { distanceToCamera, showPlanets, showImage, showRotation, showGlow } = useMemo(() => {
+    const distance = new THREE.Vector3(...props.position).distanceTo(camera.position);
+    return {
+      distanceToCamera: distance,
+      showPlanets: distance < 10,
+      showImage: distance < 0.1,
+      showRotation: distance < 0.1,
+      showGlow: true // Always show glow for all distances
+    };
+  }, [props.position, camera.position]);
   
   // Calculate star radius using real astronomical scales
   const realStarRadius = system.st_rad || 1; // Solar radii, default to 1 if unknown
@@ -86,27 +92,25 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
   
   // Final radius combines real size and maximum allowed scale, capped by closest perihelion
   const starRadius = useMemo(() => {
-    if (distanceToCamera <= 0.01) {
-      // When very close, scale up to max allowed size based on slider
-      const maxScaleFactor = maxStarSize / realSizeInParsecs;
-      return realSizeInParsecs * (1 + t * maxScaleFactor);
-    } else if (distanceToCamera <= 0.1) {
-      // Transition between real size and standard scaling
-      const t = (distanceToCamera - 0.01) / (0.1 - 0.01); // 0 to 1
-      const standardSize = 0.004 * (1 + (1 - distanceToCamera) * 2);
-      return realSizeInParsecs * (1 - t) + standardSize * t;
-    } else if (distanceToCamera <= 1) {
-      // Linear scaling between 0.1 and 1 parsecs
-      return 0.004 * distanceToCamera;
-    } else if (distanceToCamera <= 50) {
-      // Linear scaling between 1 and 50 parsecs
-      return 0.004 * distanceToCamera;
-    } else {
-      // Progressive decrease beyond 50 parsecs
-      const t = (distanceToCamera - 50) / 50; // Factor for gradual decrease
-      return 0.004 * 50 * Math.pow(0.9, t); // Decrease by 10% for each 50pc step
-    }
+    // Real physical size with scale slider
+    const scaledRealSize = realSizeInParsecs * (1 + t * (maxStarSize / realSizeInParsecs - 1));
+    
+    // Base apparent size we want to maintain
+    const baseApparentSize = 0.002; // Keep stars visible at large distances
+    
+    // Calculate size needed to maintain apparent size at current distance
+    const sizeForConstantAppearance = baseApparentSize * distanceToCamera;
+    
+    // At far distances: use size that creates constant apparent size
+    // At close distances: transition to real physical size
+    return Math.max(scaledRealSize, sizeForConstantAppearance);
   }, [distanceToCamera, realSizeInParsecs, t, maxStarSize]);
+
+  // Calculate halo size - should always scale with distance for consistent appearance
+  const haloRadius = useMemo(() => {
+    const baseHaloSize = 0.002;
+    return baseHaloSize * distanceToCamera;
+  }, [distanceToCamera]);
 
   // Calculate color (used for point light and fallback)
   const color = useMemo(() => {
@@ -137,8 +141,8 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
     // Get rotation period in days, default to Sun's rotation period if not available
     const rotationPeriod = system.st_rotp || 24.47;
 
-    // Convert rotation period to radians per second (negative to match planet rotation direction)
-    const rotationSpeed = -(2 * Math.PI) / (rotationPeriod * 24 * 60 * 60);
+    // Convert rotation period to radians per second (positive for clockwise rotation)
+    const rotationSpeed = (2 * Math.PI) / (rotationPeriod * 24 * 60 * 60);
 
     // Update rotation angle
     rotationAngleRef.current += rotationSpeed * delta * 100000; // Scale up for visibility
@@ -222,6 +226,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
             />
           </mesh>
         }>
+          <>
           <mesh
             ref={starRef}
             onPointerOver={() => setHovered(true)}
@@ -243,6 +248,39 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
               depthTest={true}
             />
           </mesh>
+          
+          {/* Gradient glow effect for textured stars */}
+          <Billboard>
+            {/* Outer halo */}
+            <mesh scale={[starRadius * 5.0, starRadius * 5.0, 1]}>
+              <planeGeometry args={[1, 1]} />
+              <meshBasicMaterial
+                color={color}
+                transparent={true}
+                opacity={props.isFiltered ? 0.09 : 1.5}
+                depthWrite={false}
+                side={THREE.DoubleSide}
+                map={glowTexture}
+                alphaMap={glowTexture}
+                blending={THREE.AdditiveBlending}
+              />
+            </mesh>
+            {/* Inner halo */}
+            <mesh scale={[starRadius * 2.4, starRadius * 2.4, 1]}>
+              <planeGeometry args={[1, 1]} />
+              <meshBasicMaterial
+                color={color}
+                transparent={true}
+                opacity={props.isFiltered ? 0.09 : 3.0}
+                depthWrite={false}
+                side={THREE.DoubleSide}
+                map={glowTexture}
+                alphaMap={glowTexture}
+                blending={THREE.AdditiveBlending}
+              />
+            </mesh>
+          </Billboard>
+          </>
         </Suspense>
       ) : showGlow ? (
         // Medium-distance and far stars with glow effect
@@ -269,7 +307,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
           {/* Gradient glow effect */}
           <Billboard>
             {/* Outer halo */}
-            <mesh scale={[starRadius * 16.0, starRadius * 16.0, 1]}>
+            <mesh scale={[haloRadius * 16.0, haloRadius * 16.0, 1]}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
@@ -283,7 +321,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
               />
             </mesh>
             {/* Inner halo */}
-            <mesh scale={[starRadius * 4.0, starRadius * 4.0, 1]}>
+            <mesh scale={[haloRadius * 4.0, haloRadius * 4.0, 1]}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}

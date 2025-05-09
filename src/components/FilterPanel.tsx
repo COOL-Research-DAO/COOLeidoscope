@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ExoplanetSystem } from '../types/Exoplanet';
-import { Range } from 'react-range';
+import React from 'react';
 
 interface FilterRange {
   min: number;
@@ -32,8 +32,404 @@ interface FilterPanelProps {
   onClose: () => void;
 }
 
-export function FilterPanel({ systems, onFiltersChange, onColorByChange, isOpen, onClose }: FilterPanelProps) {
+// Add debounce utility function
+const debounce = <F extends (...args: any[]) => any>(
+  func: F, 
+  wait: number
+): ((...args: Parameters<F>) => void) => {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  
+  return function(...args: Parameters<F>) {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+};
+
+// Add a custom DualRangeSlider component with optimized performance
+const DualRangeSlider: React.FC<{
+  min: number;
+  max: number;
+  minValue: number;
+  maxValue: number;
+  step?: number;
+  onChange: (min: number, max: number) => void;
+  onMouseDown?: () => void;
+  format?: (value: number) => string;
+}> = ({ min, max, minValue, maxValue, step = 0.01, onChange, onMouseDown, format }) => {
+  const sliderRef = useRef<HTMLDivElement>(null);
+  const minThumbRef = useRef<HTMLDivElement>(null);
+  const maxThumbRef = useRef<HTMLDivElement>(null);
+  const trackHighlightRef = useRef<HTMLDivElement>(null);
+  const minLabelRef = useRef<HTMLDivElement>(null);
+  const maxLabelRef = useRef<HTMLDivElement>(null);
+  
+  const [localMinValue, setLocalMinValue] = useState(minValue);
+  const [localMaxValue, setLocalMaxValue] = useState(maxValue);
+  const [isDragging, setIsDragging] = useState<'min' | 'max' | null>(null);
+  const lastReportedValues = useRef({ min: minValue, max: maxValue });
+  
+  // Sync external values with local state when props change
+  useEffect(() => {
+    if (!isDragging && 
+        (minValue !== lastReportedValues.current.min || 
+         maxValue !== lastReportedValues.current.max)) {
+      setLocalMinValue(minValue);
+      setLocalMaxValue(maxValue);
+      lastReportedValues.current = { min: minValue, max: maxValue };
+      
+      // Update DOM directly for better performance
+      updateDomElements(minValue, maxValue);
+    }
+  }, [minValue, maxValue, isDragging]);
+  
+  // Format function with fallback
+  const formatValue = format || ((value: number) => value.toFixed(1));
+  
+  // Calculate percentage for positioning
+  const getPercent = (value: number) => {
+    return ((value - min) / (max - min)) * 100;
+  };
+  
+  // Direct DOM manipulation for smoother performance
+  const updateDomElements = (minVal: number, maxVal: number) => {
+    if (!minThumbRef.current || !maxThumbRef.current || 
+        !trackHighlightRef.current || !minLabelRef.current || 
+        !maxLabelRef.current) return;
+        
+    const minPos = getPercent(minVal);
+    const maxPos = getPercent(maxVal);
+    
+    // Update positions directly using style transform for better performance
+    minThumbRef.current.style.left = `${minPos}%`;
+    maxThumbRef.current.style.left = `${maxPos}%`;
+    
+    // Update track highlight
+    trackHighlightRef.current.style.left = `${minPos}%`;
+    trackHighlightRef.current.style.width = `${maxPos - minPos}%`;
+    
+    // Update labels
+    minLabelRef.current.style.left = `${minPos}%`;
+    minLabelRef.current.textContent = formatValue(minVal);
+    
+    maxLabelRef.current.style.left = `${maxPos}%`;
+    maxLabelRef.current.textContent = formatValue(maxVal);
+  };
+  
+  // Update parent state but debounce during drag operations
+  const updateParentState = useCallback((newMin: number, newMax: number) => {
+    lastReportedValues.current = { min: newMin, max: newMax };
+    onChange(newMin, newMax);
+  }, [onChange]);
+  
+  // Handle thumb drag start with optimized performance
+  const handleThumbMouseDown = (e: React.MouseEvent, thumb: 'min' | 'max') => {
+    e.preventDefault();
+    setIsDragging(thumb);
+    if (onMouseDown) onMouseDown();
+    
+    // Start position
+    const startX = e.clientX;
+    const trackRect = sliderRef.current?.getBoundingClientRect();
+    const trackWidth = trackRect?.width || 1;
+    
+    // Calculate initial values
+    const startMinVal = localMinValue;
+    const startMaxVal = localMaxValue;
+    
+    let frameId: number | null = null;
+    let lastNewMin = startMinVal;
+    let lastNewMax = startMaxVal;
+    
+    // Handle mouse move during drag with requestAnimationFrame for smooth performance
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!trackRect) return;
+      
+      // Cancel any pending animation frame
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+      
+      // Schedule update on next animation frame
+      frameId = requestAnimationFrame(() => {
+        // Calculate delta movement as percentage of track width
+        const deltaX = moveEvent.clientX - startX;
+        const deltaPercentage = deltaX / trackWidth;
+        const deltaValue = deltaPercentage * (max - min);
+        
+        if (thumb === 'min') {
+          // Update min value
+          const newMinVal = Math.max(min, Math.min(startMinVal + deltaValue, lastNewMax - step));
+          // Round to step
+          const roundedMinVal = Math.round((newMinVal - min) / step) * step + min;
+          lastNewMin = roundedMinVal;
+          
+          // Update DOM directly without state updates for smoother performance
+          updateDomElements(roundedMinVal, lastNewMax);
+        } else {
+          // Update max value
+          const newMaxVal = Math.min(max, Math.max(startMaxVal + deltaValue, lastNewMin + step));
+          // Round to step
+          const roundedMaxVal = Math.round((newMaxVal - min) / step) * step + min;
+          lastNewMax = roundedMaxVal;
+          
+          // Update DOM directly without state updates for smoother performance
+          updateDomElements(lastNewMin, roundedMaxVal);
+        }
+      });
+    };
+    
+    // Handle mouse up to end drag
+    const handleMouseUp = () => {
+      // Cancel any pending animation frame
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+      
+      // Update state at the end of drag
+      setLocalMinValue(lastNewMin);
+      setLocalMaxValue(lastNewMax);
+      updateParentState(lastNewMin, lastNewMax);
+      
+      // Use timeout to avoid any race conditions with React's state updates
+      setTimeout(() => {
+        setIsDragging(null);
+      }, 0);
+      
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+  
+  // Handle track click - simplified
+  const handleTrackClick = (e: React.MouseEvent) => {
+    if (!sliderRef.current) return;
+    
+    const rect = sliderRef.current.getBoundingClientRect();
+    const clickPosition = e.clientX - rect.left;
+    const percentage = clickPosition / rect.width;
+    const value = min + percentage * (max - min);
+    const roundedValue = Math.round((value - min) / step) * step + min;
+    
+    // Determine which thumb to move (closest)
+    const distToMin = Math.abs(value - localMinValue);
+    const distToMax = Math.abs(value - localMaxValue);
+    
+    if (distToMin <= distToMax) {
+      const newMin = Math.min(roundedValue, localMaxValue - step);
+      setLocalMinValue(newMin);
+      updateDomElements(newMin, localMaxValue);
+      updateParentState(newMin, localMaxValue);
+    } else {
+      const newMax = Math.max(roundedValue, localMinValue + step);
+      setLocalMaxValue(newMax);
+      updateDomElements(localMinValue, newMax);
+      updateParentState(localMinValue, newMax);
+    }
+  };
+  
+  // Handle touch start - optimized the same way as mouse events
+  const handleThumbTouchStart = (e: React.TouchEvent, thumb: 'min' | 'max') => {
+    e.preventDefault();
+    setIsDragging(thumb);
+    if (onMouseDown) onMouseDown();
+    
+    // Start position
+    const startX = e.touches[0].clientX;
+    const trackRect = sliderRef.current?.getBoundingClientRect();
+    const trackWidth = trackRect?.width || 1;
+    
+    // Calculate initial values
+    const startMinVal = localMinValue;
+    const startMaxVal = localMaxValue;
+    
+    let frameId: number | null = null;
+    let lastNewMin = startMinVal;
+    let lastNewMax = startMaxVal;
+    
+    // Handle touch move during drag with requestAnimationFrame
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+      moveEvent.preventDefault();
+      if (!trackRect) return;
+      
+      // Cancel any pending animation frame
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+      
+      // Schedule update on next animation frame
+      frameId = requestAnimationFrame(() => {
+        // Calculate delta movement as percentage of track width
+        const deltaX = moveEvent.touches[0].clientX - startX;
+        const deltaPercentage = deltaX / trackWidth;
+        const deltaValue = deltaPercentage * (max - min);
+        
+        if (thumb === 'min') {
+          // Update min value
+          const newMinVal = Math.max(min, Math.min(startMinVal + deltaValue, lastNewMax - step));
+          // Round to step
+          const roundedMinVal = Math.round((newMinVal - min) / step) * step + min;
+          lastNewMin = roundedMinVal;
+          
+          // Update DOM directly without state updates
+          updateDomElements(roundedMinVal, lastNewMax);
+        } else {
+          // Update max value
+          const newMaxVal = Math.min(max, Math.max(startMaxVal + deltaValue, lastNewMin + step));
+          // Round to step
+          const roundedMaxVal = Math.round((newMaxVal - min) / step) * step + min;
+          lastNewMax = roundedMaxVal;
+          
+          // Update DOM directly without state updates
+          updateDomElements(lastNewMin, roundedMaxVal);
+        }
+      });
+    };
+    
+    // Handle touch end to end drag
+    const handleTouchEnd = () => {
+      // Cancel any pending animation frame
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+      
+      // Update state at the end of drag
+      setLocalMinValue(lastNewMin);
+      setLocalMaxValue(lastNewMax);
+      updateParentState(lastNewMin, lastNewMax);
+      
+      // Use timeout to avoid race conditions
+      setTimeout(() => {
+        setIsDragging(null);
+      }, 0);
+      
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+    
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
+  };
+  
+  // Calculate initial positions
+  const minPos = getPercent(localMinValue);
+  const maxPos = getPercent(localMaxValue);
+
+  return (
+    <div style={{ position: 'relative', height: '40px' }}>
+      {/* Main track */}
+      <div
+        ref={sliderRef}
+        onClick={handleTrackClick}
+        style={{
+          position: 'absolute',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          width: '100%',
+          height: '4px',
+          backgroundColor: '#333',
+          borderRadius: '4px',
+          cursor: 'pointer'
+        }}
+      >
+        {/* Track highlight */}
+        <div
+          ref={trackHighlightRef}
+          style={{
+            position: 'absolute',
+            left: `${minPos}%`,
+            width: `${maxPos - minPos}%`,
+            height: '100%',
+            backgroundColor: '#666',
+            borderRadius: '4px'
+          }}
+        />
+      </div>
+      
+      {/* Min thumb */}
+      <div
+        ref={minThumbRef}
+        onMouseDown={(e) => handleThumbMouseDown(e, 'min')}
+        onTouchStart={(e) => handleThumbTouchStart(e, 'min')}
+        style={{
+          position: 'absolute',
+          left: `${minPos}%`,
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: '18px',
+          height: '18px',
+          borderRadius: '50%',
+          backgroundColor: '#fff',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+          cursor: 'grab',
+          zIndex: 2,
+          touchAction: 'none',
+          willChange: 'left' // Hint for browser optimization
+        }}
+      />
+      
+      {/* Max thumb */}
+      <div
+        ref={maxThumbRef}
+        onMouseDown={(e) => handleThumbMouseDown(e, 'max')}
+        onTouchStart={(e) => handleThumbTouchStart(e, 'max')}
+        style={{
+          position: 'absolute',
+          left: `${maxPos}%`,
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: '18px',
+          height: '18px',
+          borderRadius: '50%',
+          backgroundColor: '#fff',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+          cursor: 'grab',
+          zIndex: 2,
+          touchAction: 'none',
+          willChange: 'left' // Hint for browser optimization
+        }}
+      />
+      
+      {/* Labels */}
+      <div
+        ref={minLabelRef}
+        style={{
+          position: 'absolute',
+          left: `${minPos}%`,
+          top: '0',
+          transform: 'translateX(-50%)',
+          fontSize: '12px',
+          color: '#fff',
+          willChange: 'left, content' // Hint for browser optimization
+        }}
+      >
+        {formatValue(localMinValue)}
+      </div>
+      
+      <div
+        ref={maxLabelRef}
+        style={{
+          position: 'absolute',
+          left: `${maxPos}%`,
+          top: '0',
+          transform: 'translateX(-50%)',
+          fontSize: '12px',
+          color: '#fff',
+          willChange: 'left, content' // Hint for browser optimization
+        }}
+      >
+        {formatValue(localMaxValue)}
+      </div>
+    </div>
+  );
+};
+
+export const FilterPanel = React.memo(function FilterPanel({ systems, onFiltersChange, onColorByChange, isOpen, onClose }: FilterPanelProps) {
   const [filters, setFilters] = useState<FilterOption[]>([]);
+  const [localState, setLocalState] = useState<{[key: string]: {min: number, max: number}}>({});
+  const isDraggingRef = useRef(false);
 
   // Initialize filters based on the data
   useEffect(() => {
@@ -93,6 +489,18 @@ export function FilterPanel({ systems, onFiltersChange, onColorByChange, isOpen,
       }
     ];
 
+    // Initialize local state for all sliders
+    const initialLocalState: {[key: string]: {min: number, max: number}} = {};
+    initialFilters.forEach(filter => {
+      if (filter.range) {
+        initialLocalState[filter.field] = {
+          min: filter.range.currentMin,
+          max: filter.range.currentMax
+        };
+      }
+    });
+    
+    setLocalState(initialLocalState);
     setFilters(initialFilters);
     onFiltersChange(initialFilters);
   }, [systems, onFiltersChange]);
@@ -179,16 +587,130 @@ export function FilterPanel({ systems, onFiltersChange, onColorByChange, isOpen,
     };
   }
 
-  // Handle range filter changes
-  const handleRangeChange = (index: number, min: number, max: number) => {
+  // Apply filters only when dragging stops or on specific trigger
+  const applyFilters = useCallback(() => {
     const newFilters = [...filters];
-    if (newFilters[index].range) {
-      newFilters[index].range!.currentMin = min;
-      newFilters[index].range!.currentMax = max;
-    }
+    
+    newFilters.forEach((filter, index) => {
+      if (filter.range && localState[filter.field]) {
+        filter.range.currentMin = localState[filter.field].min;
+        filter.range.currentMax = localState[filter.field].max;
+      }
+    });
+    
     setFilters(newFilters);
     onFiltersChange(newFilters);
-  };
+  }, [filters, localState, onFiltersChange]);
+
+  // Handle input change for min value with immediate filtering
+  const handleMinInputChange = useCallback((field: string, value: number) => {
+    setLocalState(prev => {
+      const newState = {
+        ...prev,
+        [field]: {
+          ...prev[field],
+          min: value
+        }
+      };
+      
+      // Apply filters immediately - don't wait for mouseup
+      const newFilters = [...filters];
+      newFilters.forEach((filter) => {
+        if (filter.range && newState[filter.field]) {
+          filter.range.currentMin = newState[filter.field].min;
+          filter.range.currentMax = newState[filter.field].max;
+        }
+      });
+      
+      setFilters(newFilters);
+      onFiltersChange(newFilters);
+      
+      return newState;
+    });
+  }, [filters, onFiltersChange]);
+
+  // Handle input change for max value with immediate filtering
+  const handleMaxInputChange = useCallback((field: string, value: number) => {
+    setLocalState(prev => {
+      const newState = {
+        ...prev,
+        [field]: {
+          ...prev[field],
+          max: value
+        }
+      };
+      
+      // Apply filters immediately - don't wait for mouseup
+      const newFilters = [...filters];
+      newFilters.forEach((filter) => {
+        if (filter.range && newState[filter.field]) {
+          filter.range.currentMin = newState[filter.field].min;
+          filter.range.currentMax = newState[filter.field].max;
+        }
+      });
+      
+      setFilters(newFilters);
+      onFiltersChange(newFilters);
+      
+      return newState;
+    });
+  }, [filters, onFiltersChange]);
+
+  // Handle both min and max changes together - with more aggressive optimization
+  const handleRangeChange = useCallback((field: string, min: number, max: number) => {
+    // Update local state immediately
+    setLocalState(prev => ({
+      ...prev,
+      [field]: { min, max }
+    }));
+    
+    // Use requestAnimationFrame to batch updates for better performance
+    requestAnimationFrame(() => {
+      const newFilters = [...filters];
+      newFilters.forEach((filter) => {
+        if (filter.field === field && filter.range) {
+          filter.range.currentMin = min;
+          filter.range.currentMax = max;
+        }
+      });
+      
+      setFilters(newFilters);
+      onFiltersChange(newFilters);
+    });
+  }, [filters, onFiltersChange]);
+
+  // Process distance values with log scale
+  const processDistValue = useCallback((value: number, isLog: boolean, isInverse: boolean = false) => {
+    if (!isLog) return value;
+    
+    if (isInverse) {
+      return Math.pow(10, value);
+    } else {
+      return Math.log10(value);
+    }
+  }, []);
+
+  const startDragging = useCallback(() => {
+    isDraggingRef.current = true;
+  }, []);
+
+  const stopDragging = useCallback(() => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      applyFilters();
+    }
+  }, [applyFilters]);
+
+  // Add event listeners for mouseup to detect end of dragging
+  useEffect(() => {
+    window.addEventListener('mouseup', stopDragging);
+    window.addEventListener('touchend', stopDragging);
+    
+    return () => {
+      window.removeEventListener('mouseup', stopDragging);
+      window.removeEventListener('touchend', stopDragging);
+    };
+  }, [stopDragging]);
 
   // Handle boolean filter changes
   const handleBooleanChange = (index: number) => {
@@ -219,7 +741,7 @@ export function FilterPanel({ systems, onFiltersChange, onColorByChange, isOpen,
     onColorByChange(fieldToColorBy);
   };
 
-  // Add reset function to FilterPanel component
+  // Reset function updated to work with local state
   const resetFilters = () => {
     const resetFilters = filters.map(filter => ({
       ...filter,
@@ -230,6 +752,19 @@ export function FilterPanel({ systems, onFiltersChange, onColorByChange, isOpen,
         currentMax: filter.range.max
       } : undefined
     }));
+    
+    // Reset local state
+    const resetLocalState: {[key: string]: {min: number, max: number}} = {};
+    resetFilters.forEach(filter => {
+      if (filter.range) {
+        resetLocalState[filter.field] = {
+          min: filter.range.min,
+          max: filter.range.max
+        };
+      }
+    });
+    
+    setLocalState(resetLocalState);
     setFilters(resetFilters);
     onFiltersChange(resetFilters);
     onColorByChange(null);
@@ -288,9 +823,9 @@ export function FilterPanel({ systems, onFiltersChange, onColorByChange, isOpen,
         <div key={filter.field} style={{ marginBottom: '20px' }}>
           <h3 style={{ marginBottom: '5px' }}>{filter.label}</h3>
           
-          {filter.type === 'range' && filter.range && (
-            <div style={{ padding: '10px 10px 5px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px' }}>
+          {filter.type === 'range' && filter.range && localState[filter.field] && (
+            <div style={{ padding: '10px 0 5px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
                 <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
                   <input
                     type="checkbox"
@@ -301,171 +836,52 @@ export function FilterPanel({ systems, onFiltersChange, onColorByChange, isOpen,
                   Color by {filter.label}
                 </label>
               </div>
-              {filter.field === 'planetCount' ? (
-                <Range
-                  key={`range-${filter.field}`}
-                  step={1}
-                  min={Math.floor(filter.range.min / 0.01) * 0.01}
-                  max={Math.ceil(filter.range.max / 0.01) * 0.01}
-                  values={[
-                    Math.round(filter.range.currentMin / 0.01) * 0.01,
-                    Math.round(filter.range.currentMax / 0.01) * 0.01
-                  ]}
-                  onChange={(values) => handleRangeChange(index, values[0], values[1])}
-                  renderTrack={({ props, children }) => (
-                    <div
-                      {...props}
-                      style={{
-                        ...props.style,
-                        height: '4px',
-                        width: '100%',
-                        backgroundColor: '#333',
-                        borderRadius: '2px',
-                      }}
-                    >
-                      {children}
-                    </div>
-                  )}
-                  renderThumb={({ props, index }) => {
-                    const { key, ...thumbProps } = props;
-                    return (
-                      <div
-                        key={key}
-                        {...thumbProps}
-                        style={{
-                          ...thumbProps.style,
-                          height: '20px',
-                          width: '20px',
-                          borderRadius: '50%',
-                          backgroundColor: '#666',
-                          display: 'flex',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <div style={{
-                          position: 'absolute',
-                          top: '-20px',
-                          color: 'white',
-                          fontSize: '12px',
-                        }}>
-                          {[filter.range!.currentMin, filter.range!.currentMax][index].toFixed(2)}
-                        </div>
-                      </div>
-                    );
-                  }}
-                />
-              ) : filter.field === 'sy_dist' ? (
-                <Range
-                  key={`range-${filter.field}`}
-                  step={0.01}
+              
+              {filter.field === 'sy_dist' ? (
+                // Distance uses log scale
+                <DualRangeSlider
                   min={Math.log10(filter.range.min)}
                   max={Math.log10(filter.range.max)}
-                  values={[
-                    Math.log10(filter.range.currentMin),
-                    Math.log10(filter.range.currentMax)
-                  ]}
-                  onChange={(values) => handleRangeChange(index, 
-                    Math.pow(10, values[0]), 
-                    Math.pow(10, values[1])
-                  )}
-                  renderTrack={({ props, children }) => (
-                    <div
-                      {...props}
-                      style={{
-                        ...props.style,
-                        height: '4px',
-                        width: '100%',
-                        backgroundColor: '#333',
-                        borderRadius: '2px',
-                      }}
-                    >
-                      {children}
-                    </div>
-                  )}
-                  renderThumb={({ props, index }) => {
-                    const { key, ...thumbProps } = props;
-                    const value = Math.pow(10, [Math.log10(filter.range!.currentMin), Math.log10(filter.range!.currentMax)][index]);
-                    return (
-                      <div
-                        key={key}
-                        {...thumbProps}
-                        style={{
-                          ...thumbProps.style,
-                          height: '20px',
-                          width: '20px',
-                          borderRadius: '50%',
-                          backgroundColor: '#666',
-                          display: 'flex',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <div style={{
-                          position: 'absolute',
-                          top: '-20px',
-                          color: 'white',
-                          fontSize: '12px',
-                        }}>
-                          {value.toFixed(1)}
-                        </div>
-                      </div>
+                  minValue={Math.log10(localState[filter.field].min)}
+                  maxValue={Math.log10(localState[filter.field].max)}
+                  step={0.01}
+                  onChange={(min, max) => {
+                    handleRangeChange(
+                      filter.field,
+                      Math.pow(10, min),
+                      Math.pow(10, max)
                     );
                   }}
+                  onMouseDown={startDragging}
+                  format={(value) => Math.pow(10, value).toFixed(1)}
+                />
+              ) : filter.field === 'planetCount' ? (
+                // Planet count uses integer steps
+                <DualRangeSlider
+                  min={filter.range.min}
+                  max={filter.range.max}
+                  minValue={localState[filter.field].min}
+                  maxValue={localState[filter.field].max}
+                  step={1}
+                  onChange={(min, max) => {
+                    handleRangeChange(filter.field, min, max);
+                  }}
+                  onMouseDown={startDragging}
+                  format={(value) => value.toFixed(0)}
                 />
               ) : (
-                <Range
-                  key={`range-${filter.field}`}
+                // Normal scales
+                <DualRangeSlider
+                  min={filter.range.min}
+                  max={filter.range.max}
+                  minValue={localState[filter.field].min}
+                  maxValue={localState[filter.field].max}
                   step={0.01}
-                  min={Math.floor(filter.range.min / 0.01) * 0.01}
-                  max={Math.ceil(filter.range.max / 0.01) * 0.01}
-                  values={[
-                    Math.round(filter.range.currentMin / 0.01) * 0.01,
-                    Math.round(filter.range.currentMax / 0.01) * 0.01
-                  ]}
-                  onChange={(values) => handleRangeChange(index, values[0], values[1])}
-                  renderTrack={({ props, children }) => (
-                    <div
-                      {...props}
-                      style={{
-                        ...props.style,
-                        height: '4px',
-                        width: '100%',
-                        backgroundColor: '#333',
-                        borderRadius: '2px',
-                      }}
-                    >
-                      {children}
-                    </div>
-                  )}
-                  renderThumb={({ props, index }) => {
-                    const { key, ...thumbProps } = props;
-                    return (
-                      <div
-                        key={key}
-                        {...thumbProps}
-                        style={{
-                          ...thumbProps.style,
-                          height: '20px',
-                          width: '20px',
-                          borderRadius: '50%',
-                          backgroundColor: '#666',
-                          display: 'flex',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <div style={{
-                          position: 'absolute',
-                          top: '-20px',
-                          color: 'white',
-                          fontSize: '12px',
-                        }}>
-                          {[filter.range!.currentMin, filter.range!.currentMax][index].toFixed(2)}
-                        </div>
-                      </div>
-                    );
+                  onChange={(min, max) => {
+                    handleRangeChange(filter.field, min, max);
                   }}
+                  onMouseDown={startDragging}
+                  format={(value) => value.toFixed(1)}
                 />
               )}
             </div>
@@ -486,7 +902,7 @@ export function FilterPanel({ systems, onFiltersChange, onColorByChange, isOpen,
       ))}
     </div>
   );
-}
+});
 
 // Helper function to check if a system matches the filters
 export function systemMatchesFilters(system: ExoplanetSystem, filters: FilterOption[]): boolean {

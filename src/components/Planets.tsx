@@ -727,7 +727,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       const orbitSpeed = speedFactor * Math.pow(Math.max(1e-9, 30000 * distanceToCamera), 1.5);
 
       // --- Incremental Angle Update ---
-      const deltaAngle = orbitSpeed * delta; // Calculate change in angle for this frame
+      const deltaAngle = -orbitSpeed * delta; // Inversion du sens de révolution (horaire)
       currentAnglesRef.current[index] += deltaAngle; // Add the change to the stored angle
 
       // Use the updated stored angle (modulo 2*PI)
@@ -750,11 +750,15 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
 
       // Update planet rotation
       const rotationPeriod = getPlanetRotationPeriod(planet);
-      const rotationSpeed = (2 * Math.PI) / (rotationPeriod * 24 * 60 * 60); // Convert days to seconds
+      // Handle negative rotation periods (retrograde rotation) correctly
+      const rotationSpeed = (2 * Math.PI) / (Math.abs(rotationPeriod) * 24 * 60 * 60); 
+      // Use original sign to determine direction
+      const rotationDirection = rotationPeriod >= 0 ? 1 : -1;
+      
       rotationAnglesRef.current[index] += rotationSpeed * delta * 100000; // Scale up for visibility
 
       // Apply both axial tilt and rotation
-      group.rotation.set(0, rotationAnglesRef.current[index], 0);
+      group.rotation.set(0, rotationAnglesRef.current[index] * rotationDirection, 0);
 
       // Update planet shader lighting
       if (group.children[0] instanceof THREE.Mesh && planetShaders.current[index]) {
@@ -772,7 +776,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
         const moonSpeedFactor = 1 / moonOrbitalPeriod;
         const moonOrbitSpeed = moonSpeedFactor * Math.pow(Math.max(1e-9, 30000 * distanceToCamera), 1.5);
         
-        moonAngleRef.current += moonOrbitSpeed * delta;
+        moonAngleRef.current -= moonOrbitSpeed * delta; // Inversion du sens de révolution de la Lune
         const moonAngle = moonAngleRef.current % (2 * Math.PI);
         
         // Register the moon angle and size with the parent component if the function exists
