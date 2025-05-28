@@ -398,7 +398,7 @@ const DualRangeSlider: React.FC<{
         style={{
           position: 'absolute',
           left: `${minPos}%`,
-          top: '0',
+          top: '-10px',
           transform: 'translateX(-50%)',
           fontSize: '12px',
           color: '#fff',
@@ -413,7 +413,7 @@ const DualRangeSlider: React.FC<{
         style={{
           position: 'absolute',
           left: `${maxPos}%`,
-          top: '0',
+          top: '-10px',
           transform: 'translateX(-50%)',
           fontSize: '12px',
           color: '#fff',
@@ -820,11 +820,11 @@ export const FilterPanel = React.memo(function FilterPanel({ systems, onFiltersC
       </div>
 
       {filters.map((filter, index) => (
-        <div key={filter.field} style={{ marginBottom: '20px' }}>
+        <div key={filter.field} style={{ marginBottom: '10px' }}>
           <h3 style={{ marginBottom: '5px' }}>{filter.label}</h3>
           
           {filter.type === 'range' && filter.range && localState[filter.field] && (
-            <div style={{ padding: '10px 0 5px' }}>
+            <div style={{ padding: '5px 0 5px' }}>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
                 <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
                   <input

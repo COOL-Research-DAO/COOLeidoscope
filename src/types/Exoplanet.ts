@@ -80,4 +80,5 @@ export interface ExoplanetSystem {
   st_rotperr1: number | null; // Upper uncertainty
   st_rotperr2: number | null; // Lower uncertainty
   st_rotplim: string | null; // Limit flag
+  st_lum: number | null; // Stellar luminosity in solar units
 } 

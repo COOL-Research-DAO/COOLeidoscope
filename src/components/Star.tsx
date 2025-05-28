@@ -7,6 +7,143 @@ import { Planets } from './Planets';
 import { FilterOption } from './FilterPanel';
 import { getViridisColor, temperatureToColor } from '../utils/colorUtils';
 
+// Constants for habitable zone calculations
+const HZ_CONSTANTS = {
+  // Conservative habitable zone
+  conservative: {
+    inner: { S_eff: 1.1, a: 1.405e-4, b: 2.622e-8, c: 3.716e-12, d: -4.557e-16 },
+    outer: { S_eff: 0.356, a: 6.171e-5, b: 1.698e-9, c: -3.198e-12, d: -5.575e-16 }
+  },
+  // Optimistic habitable zone
+  optimistic: {
+    inner: { S_eff: 1.5, a: 2.486e-4, b: 5.263e-8, c: 1.019e-11, d: -1.337e-15 },
+    outer: { S_eff: 0.32, a: 5.547e-5, b: 1.527e-9, c: -2.874e-12, d: -5.011e-16 }
+  }
+};
+
+// Calculate habitable zone distances based on stellar parameters
+function calculateHabitableZone(teff: number, luminosity: number) {
+  // If we don't have temperature, use approximation
+  if (!teff) {
+    // Default values
+    return {
+      conservative: { inner: 0.95 * Math.sqrt(luminosity), outer: 1.67 * Math.sqrt(luminosity) },
+      optimistic: { inner: 0.75 * Math.sqrt(luminosity), outer: 1.77 * Math.sqrt(luminosity) }
+    };
+  }
+  
+  // Calculate scaled temperature difference from solar (5780K)
+  const tStar = teff - 5780;
+  
+  // Calculate effective stellar flux for each boundary
+  const calcSeff = (params: { S_eff: number, a: number, b: number, c: number, d: number }) => {
+    const { S_eff, a, b, c, d } = params;
+    return S_eff + a * tStar + b * tStar * tStar + c * Math.pow(tStar, 3) + d * Math.pow(tStar, 4);
+  };
+  
+  // Calculate distances
+  const conservativeInnerSeff = calcSeff(HZ_CONSTANTS.conservative.inner);
+  const conservativeOuterSeff = calcSeff(HZ_CONSTANTS.conservative.outer);
+  const optimisticInnerSeff = calcSeff(HZ_CONSTANTS.optimistic.inner);
+  const optimisticOuterSeff = calcSeff(HZ_CONSTANTS.optimistic.outer);
+  
+  return {
+    conservative: {
+      inner: Math.sqrt(luminosity / conservativeInnerSeff),
+      outer: Math.sqrt(luminosity / conservativeOuterSeff)
+    },
+    optimistic: {
+      inner: Math.sqrt(luminosity / optimisticInnerSeff),
+      outer: Math.sqrt(luminosity / optimisticOuterSeff)
+    }
+  };
+}
+
+// HabitableZone component to visualize the zone around a star
+interface HabitableZoneProps {
+  system: ExoplanetSystem;
+  visible: boolean;
+}
+
+const HabitableZone = memo(({ system, visible }: HabitableZoneProps) => {
+  if (!visible) return null;
+  
+  // Get star parameters
+  const teff = system.st_teff || 5780; // Default to solar temperature if not available
+  let luminosity = system.st_lum || null; // Get luminosity if available
+  
+  // If luminosity is missing, calculate it more accurately based on star type
+  if (luminosity === null) {
+    // Use radius if available (most accurate method via Stefan-Boltzmann law)
+    if (system.st_rad) {
+      // L/L☉ = (R/R☉)² × (T/T☉)⁴
+      const t_ratio = teff / 5780;
+      luminosity = Math.pow(system.st_rad, 2) * Math.pow(t_ratio, 4);
+    } 
+    // If radius is missing but mass is available, use mass-luminosity relation
+    else if (system.st_mass) {
+      if (system.st_mass < 0.43) {
+        // M-dwarfs: L ∝ M^2.3 (for M < 0.43 M☉)
+        luminosity = Math.pow(system.st_mass, 2.3);
+      } else if (system.st_mass < 2) {
+        // K, G, F dwarfs: L ∝ M^4 (for 0.43 < M < 2 M☉)
+        luminosity = Math.pow(system.st_mass, 4);
+      } else {
+        // A, B stars: L ∝ M^3.5 (for 2 < M < 20 M☉)
+        luminosity = Math.pow(system.st_mass, 3.5);
+      }
+    }
+    // Last resort: estimate based on temperature alone
+    else {
+      // Based on temperature, identify stellar type and estimate luminosity
+      if (teff < 3500) {
+        // M dwarfs and ultracool dwarfs
+        const normalizedTemp = Math.max(teff, 2300) / 5780;
+        // For very cool stars, luminosity drops dramatically
+        // This is a better approximation for M dwarfs and cooler
+        luminosity = Math.pow(normalizedTemp, 7);
+      } else if (teff < 5000) {
+        // K dwarfs
+        const normalizedTemp = teff / 5780;
+        luminosity = Math.pow(normalizedTemp, 5);
+      } else if (teff < 7000) {
+        // G and F stars
+        const normalizedTemp = teff / 5780;
+        luminosity = Math.pow(normalizedTemp, 4);
+      } else {
+        // A, B, O stars
+        const normalizedTemp = teff / 5780;
+        luminosity = Math.pow(normalizedTemp, 3.5);
+      }
+    }
+  }
+  
+  // Validate luminosity (safeguard against extreme values)
+  luminosity = Math.max(0.000001, Math.min(1000000, luminosity));
+  
+  // Calculate habitable zone
+  const hz = calculateHabitableZone(teff, luminosity);
+  
+  // Convert AU to parsecs (1 AU = 1/206265 parsecs)
+  const auToParsec = 1/206265;
+  
+  // Remove scaleFactor - use actual physical sizes based on stellar parameters
+  
+  // Calculate conservative habitable zone
+  const conservativeInner = hz.conservative.inner * auToParsec;
+  const conservativeOuter = hz.conservative.outer * auToParsec;
+  
+  return (
+    <group>
+      {/* Conservative habitable zone (green color) - flat disk in ecliptic plane */}
+      <mesh rotation={[Math.PI/2, 0, 0]}>
+        <ringGeometry args={[conservativeInner, conservativeOuter, 64]} />
+        <meshBasicMaterial color="#4CAF50" transparent opacity={0.3} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+});
+
 // Global texture singleton for all stars to share
 let globalStarTexture: THREE.Texture | null = null;
 let isLoadingGlobalTexture = false;
@@ -48,6 +185,7 @@ interface StarProps {
   activeFilters: FilterOption[];
   systemMaxScale: number;
   planetScaleRatio: number;
+  showHabitableZones?: boolean;
 }
 
 const Star = memo(function Star({ system, colorByField, colorByValue, ...props }: StarProps) {
@@ -59,14 +197,15 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
   const rotationAngleRef = useRef(0);
   
   // Calculate distance and visibility flags in a single memo to prevent recalculation on hover
-  const { distanceToCamera, showPlanets, showImage, showRotation, showGlow } = useMemo(() => {
+  const { distanceToCamera, showPlanets, showImage, showRotation, showGlow, showHabitableZone } = useMemo(() => {
     const distance = new THREE.Vector3(...props.position).distanceTo(camera.position);
     return {
       distanceToCamera: distance,
       showPlanets: distance < 10,
       showImage: distance < 0.1,
       showRotation: distance < 0.1,
-      showGlow: true // Always show glow for all distances
+      showGlow: true, // Always show glow for all distances
+      showHabitableZone: distance < 10 // Only show habitable zone when close enough (same as planets)
     };
   }, [props.position, camera.position]);
   
@@ -213,6 +352,9 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
   return (
     <group position={props.position}>
       {pointLightElement}
+      
+      {/* Habitable Zone */}
+      <HabitableZone system={system} visible={(props.showHabitableZones || false) && showHabitableZone} />
       
       {showImage ? (
         // Close stars with texture
@@ -369,6 +511,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
     prevProps.isHighlighted === nextProps.isHighlighted &&
     prevProps.isFar === nextProps.isFar &&
     prevProps.scale === nextProps.scale &&
+    prevProps.showHabitableZones === nextProps.showHabitableZones &&
     JSON.stringify(prevProps.activeFilters) === JSON.stringify(nextProps.activeFilters)
   );
 });

@@ -55,11 +55,108 @@ interface SceneProps {
   activeFilters: FilterOption[];
   colorByField: string | null;
   systems: ExoplanetSystem[];
+  showHabitableZones?: boolean;
 }
 
 export interface SceneHandle {
   focusOnStar: (system: ExoplanetSystem) => void;
 }
+
+// Constants for habitable zone calculations
+const HZ_CONSTANTS = {
+  // Conservative habitable zone
+  conservative: {
+    inner: { S_eff: 1.1, a: 1.405e-4, b: 2.622e-8, c: 3.716e-12, d: -4.557e-16 },
+    outer: { S_eff: 0.356, a: 6.171e-5, b: 1.698e-9, c: -3.198e-12, d: -5.575e-16 }
+  },
+  // Optimistic habitable zone
+  optimistic: {
+    inner: { S_eff: 1.5, a: 2.486e-4, b: 5.263e-8, c: 1.019e-11, d: -1.337e-15 },
+    outer: { S_eff: 0.32, a: 5.547e-5, b: 1.527e-9, c: -2.874e-12, d: -5.011e-16 }
+  }
+};
+
+// Calculate habitable zone distances based on stellar parameters
+function calculateHabitableZone(teff: number, luminosity: number) {
+  // If we don't have temperature, use approximation
+  if (!teff) {
+    // Default values
+    return {
+      conservative: { inner: 0.95 * Math.sqrt(luminosity), outer: 1.67 * Math.sqrt(luminosity) },
+      optimistic: { inner: 0.75 * Math.sqrt(luminosity), outer: 1.77 * Math.sqrt(luminosity) }
+    };
+  }
+  
+  // Calculate scaled temperature difference from solar (5780K)
+  const tStar = teff - 5780;
+  
+  // Calculate effective stellar flux for each boundary
+  const calcSeff = (params: { S_eff: number, a: number, b: number, c: number, d: number }) => {
+    const { S_eff, a, b, c, d } = params;
+    return S_eff + a * tStar + b * tStar * tStar + c * Math.pow(tStar, 3) + d * Math.pow(tStar, 4);
+  };
+  
+  // Calculate distances
+  const conservativeInnerSeff = calcSeff(HZ_CONSTANTS.conservative.inner);
+  const conservativeOuterSeff = calcSeff(HZ_CONSTANTS.conservative.outer);
+  const optimisticInnerSeff = calcSeff(HZ_CONSTANTS.optimistic.inner);
+  const optimisticOuterSeff = calcSeff(HZ_CONSTANTS.optimistic.outer);
+  
+  return {
+    conservative: {
+      inner: Math.sqrt(luminosity / conservativeInnerSeff),
+      outer: Math.sqrt(luminosity / conservativeOuterSeff)
+    },
+    optimistic: {
+      inner: Math.sqrt(luminosity / optimisticInnerSeff),
+      outer: Math.sqrt(luminosity / optimisticOuterSeff)
+    }
+  };
+}
+
+// HabitableZone component to visualize the zone around a star
+interface HabitableZoneProps {
+  system: ExoplanetSystem;
+  visible: boolean;
+}
+
+const HabitableZone = memo(({ system, visible }: HabitableZoneProps) => {
+  if (!visible) return null;
+  
+  // Get star parameters
+  const teff = system.st_teff || 5780; // Default to solar temperature if not available
+  const luminosity = system.st_lum || 1.0; // Default to solar luminosity if not available
+  
+  // Calculate habitable zone
+  const hz = calculateHabitableZone(teff, luminosity);
+  
+  // Convert AU to parsecs (1 AU = 1/206265 parsecs)
+  const auToParsec = 1/206265;
+  
+  // Calculate optimistic habitable zone
+  const innerRadius = hz.optimistic.inner * auToParsec;
+  const outerRadius = hz.optimistic.outer * auToParsec;
+  
+  // Calculate conservative habitable zone 
+  const conservativeInner = hz.conservative.inner * auToParsec;
+  const conservativeOuter = hz.conservative.outer * auToParsec;
+  
+  return (
+    <group>
+      {/* Optimistic habitable zone (lighter color) */}
+      <mesh rotation={[Math.PI/2, 0, 0]}>
+        <torusGeometry args={[(innerRadius + outerRadius) / 2, (outerRadius - innerRadius) / 2, 2, 48]} />
+        <meshBasicMaterial color="#009900" transparent opacity={0.1} side={THREE.DoubleSide} />
+      </mesh>
+      
+      {/* Conservative habitable zone (darker color) */}
+      <mesh rotation={[Math.PI/2, 0, 0]}>
+        <torusGeometry args={[(conservativeInner + conservativeOuter) / 2, (conservativeOuter - conservativeInner) / 2, 2, 48]} />
+        <meshBasicMaterial color="#00aa00" transparent opacity={0.2} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+});
 
 const Scene = forwardRef<SceneHandle, SceneProps>(({ 
   onStarClick, 
@@ -72,6 +169,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
   activeFilters,
   colorByField,
   systems,
+  showHabitableZones = false,
 }, ref) => {
   
   const [scale, setScale] = useState(1);
@@ -780,10 +878,11 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
               activeFilters={activeFilters}
               systemMaxScale={1000}
               planetScaleRatio={100}
+              showHabitableZones={showHabitableZones}
             />
           );
         });
-      }, [visibleSystems, universeOffset, scale, highlightedSystem, isPaused, useUniverseOffset, sizeScale, activeFilters, colorByField, registerPlanetAngle])}
+      }, [visibleSystems, universeOffset, scale, highlightedSystem, isPaused, useUniverseOffset, sizeScale, activeFilters, colorByField, registerPlanetAngle, showHabitableZones])}
       <OrbitControls
         ref={controlsRef}
         enableDamping
@@ -831,6 +930,7 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<FilterOption[]>([]);
   const [colorByField, setColorByField] = useState<string | null>(null);
+  const [showHabitableZones, setShowHabitableZones] = useState(false);
 
   useEffect(() => {
     console.log('Loading exoplanet data...');
@@ -1005,6 +1105,7 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           activeFilters={activeFilters}
           colorByField={colorByField}
           systems={systems}
+          showHabitableZones={showHabitableZones}
         />
         <ScaleBarUpdater />
       </Canvas>
@@ -1167,9 +1268,9 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       )}
       <div style={{
         position: 'fixed',
-        bottom: '1rem',
+        bottom: '3rem', // Move compact info panel higher
         left: '1rem',
-        zIndex: 1000,
+        zIndex: 999,
         maxWidth: '300px',
         backgroundColor: 'rgba(0, 0, 0, 0.8)',
         borderRadius: '8px',
@@ -1181,6 +1282,27 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           compact={true}
         />
       </div>
+      {/* Habitable zone toggle button */}
+      <button
+        onClick={() => setShowHabitableZones(!showHabitableZones)}
+        style={{
+          position: 'fixed',
+          bottom: '1.9rem',
+          left: '1.9rem',
+          padding: '8px',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          border: '1px solid #666',
+          borderRadius: '4px',
+          color: 'white',
+          cursor: 'pointer',
+          zIndex: 999,
+          marginBottom: 0, // Remove margin since we moved the panel up
+        }}
+      >
+        {showHabitableZones ? 'Hide Habitable Zone' : 'Show Habitable Zone'}
+      </button>
+      
+      {/* Filter button */}
       <button
         onClick={() => setIsFilterPanelOpen(true)}
         style={{
@@ -1198,6 +1320,7 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       >
         <FaFilter />
       </button>
+      
       <FilterPanel
         systems={systems}
         onFiltersChange={setActiveFilters}
