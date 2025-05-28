@@ -85,8 +85,37 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
   const [universeOffset, setUniverseOffset] = useState(new THREE.Vector3(0, 0, 0));
   const [useUniverseOffset, setUseUniverseOffset] = useState(true);
   const [focusedObjectRadius, setFocusedObjectRadius] = useState<number>(0.0001/206265);
+  
+  // Add state to track focused planet
+  const [focusedPlanet, setFocusedPlanet] = useState<{
+    system: ExoplanetSystem;
+    planetIndex: number;
+    zoomDistance: number;
+    initialCameraOffset?: THREE.Vector3; // Store initial camera position relative to planet
+  } | null>(null);
+  
+  // Add state to temporarily disable tracking during manual control
+  const [trackingEnabled, setTrackingEnabled] = useState(true);
+  const lastOffsetRef = useRef(new THREE.Vector3());
+  const targetOffsetRef = useRef(new THREE.Vector3());
+  const offsetVelocityRef = useRef(new THREE.Vector3()); // Track velocity for dampening
+  const manualControlTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const initialCameraQuaternionRef = useRef<THREE.Quaternion | null>(null);
+  const isAnimatingRef = useRef(false);
+  const lastPlanetAngleRef = useRef<number | null>(null);
+  const lastFrameTimeRef = useRef(0);
+  const universeOffsetRef = useRef(new THREE.Vector3(0, 0, 0));
+  const rafIdRef = useRef<number | null>(null);
+  
+  // Add state for tracking indicator
+  const [showTrackingIndicator, setShowTrackingIndicator] = useState(false);
 
-  // Handle space bar press
+  // Sync universeOffset state with ref for smoother animations
+  useEffect(() => {
+    universeOffsetRef.current.copy(universeOffset);
+  }, [universeOffset]);
+
+  // Handle space bar press and tracking toggle
   useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
       const searchInput = document.querySelector('input[placeholder*="Search for stars"]');
@@ -98,11 +127,20 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
         event.preventDefault();
         setIsPaused((prev: boolean) => !prev);
       }
+      
+      // Toggle tracking with 'T' key
+      if (event.code === 'KeyT' && focusedPlanet) {
+        event.preventDefault();
+        setTrackingEnabled(prev => !prev);
+        // Show indicator briefly
+        setShowTrackingIndicator(true);
+        setTimeout(() => setShowTrackingIndicator(false), 2000);
+      }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [setIsPaused]);
+  }, [setIsPaused, focusedPlanet]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -383,6 +421,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
       // Get the planet's current angle from our reference
       const planetKey = `${system.hostname}-${planetIndex}`;
       const planetAngle = planetAnglesRef.current.get(planetKey) || 0;
+      lastPlanetAngleRef.current = planetAngle; // Store initial angle
       
       // Calculate orbit radius in parsecs
       const orbitRadius = (planet.pl_orbsmax || 
@@ -396,14 +435,53 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
       // Offset that places planet at origin
       const endOffset = endStarOffset.clone().add(planetPosition);
       
+      // Reset the velocity when starting a new focus
+      offsetVelocityRef.current.set(0, 0, 0);
+      
+      // Initialize target offset at the end position
+      targetOffsetRef.current.copy(endOffset);
+      
       // Set zoom distance based on the planet's scaled size
       let finalZoomDistance;
       if (scaledPlanetSize) {
-        finalZoomDistance = scaledPlanetSize * (10 / (1000 / sizeScale));
+        // Calculate distance needed for planet to fill half the screen
+        // Using the formula: distance = radius / tan(FOV/4)
+        // FOV/4 gives us half the horizontal field of view divided by 2
+        // Default camera FOV is usually 75 degrees
+        const fov = 75 * (Math.PI / 180); // Convert to radians
+        const halfFovTangent = Math.tan(fov / 4);
+        
+        // Scale factor is applied to adjust distance if needed
+        const scaleFactor = 1.0;
+        finalZoomDistance = (scaledPlanetSize / halfFovTangent) * scaleFactor;
       } else {
         // Fallback to a reasonable default if no size is available
         finalZoomDistance = 0.0001/206265 * 200;
       }
+      
+      // Calculate direction from planet to star (daylight direction)
+      // After centering, the planet will be at (0,0,0) and the star at -planetPosition
+      // So the direction from planet to star is -planetPosition normalized
+      const dayLightDirection = planetPosition.clone().multiplyScalar(-1).normalize();
+      
+      // Position camera on the daylight side of the planet (same side as the star)
+      const cameraPosition = dayLightDirection.clone().multiplyScalar(finalZoomDistance);
+      
+      // Store the quaternion that makes the camera look at the planet
+      camera.position.copy(cameraPosition);
+      camera.lookAt(0, 0, 0);
+      initialCameraQuaternionRef.current = camera.quaternion.clone();
+      
+      // Calculate camera offset from planet (will be maintained during tracking)
+      const initialCameraOffset = cameraPosition.clone();
+      
+      // Set the focused planet for continuous tracking
+      setFocusedPlanet({
+        system,
+        planetIndex,
+        zoomDistance: finalZoomDistance,
+        initialCameraOffset
+      });
       
       // Start two-phase animation (first center, then zoom)
       animatePlanetFocus(startOffset, endOffset, finalZoomDistance, initialCameraPos);
@@ -413,13 +491,264 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
   // Add planet double-click handler
   const handlePlanetDoubleClick = (system: ExoplanetSystem, planetIndex: number) => {
     focusOnPlanet(system, planetIndex);
-    // Optionally set other state like compactSystem if needed
+    // Set compactSystem to display the system in compact mode
+    setCompactSystem(system);
+    setSelectedSystem(null);
+  };
+  
+  // Add event listeners for orbit controls
+  useEffect(() => {
+    const handleControlStart = () => {
+      // Disable tracking when user starts manual control
+      setTrackingEnabled(false);
+      
+      // Clear any existing timeout
+      if (manualControlTimeoutRef.current) {
+        clearTimeout(manualControlTimeoutRef.current);
+      }
+    };
+    
+    const handleControlEnd = () => {
+      // Re-enable tracking after a short delay
+      if (manualControlTimeoutRef.current) {
+        clearTimeout(manualControlTimeoutRef.current);
+      }
+      
+      manualControlTimeoutRef.current = setTimeout(() => {
+        setTrackingEnabled(true);
+      }, 1500); // Delay before re-enabling tracking
+    };
+    
+    // Add event listeners to orbit controls
+    if (controlsRef.current) {
+      controlsRef.current.addEventListener('start', handleControlStart);
+      controlsRef.current.addEventListener('end', handleControlEnd);
+    }
+    
+    // Cleanup
+    return () => {
+      if (controlsRef.current) {
+        controlsRef.current.removeEventListener('start', handleControlStart);
+        controlsRef.current.removeEventListener('end', handleControlEnd);
+      }
+      
+      if (manualControlTimeoutRef.current) {
+        clearTimeout(manualControlTimeoutRef.current);
+      }
+    };
+  }, [controlsRef.current]);
+  
+  // Use a more efficient approach for updating universe offset
+  useEffect(() => {
+    // Function to update position with fixed time step
+    const updateUniverseOffset = () => {
+      setUniverseOffset(universeOffsetRef.current.clone());
+    };
+
+    // Throttled update function to reduce state updates
+    const throttledUpdate = throttle(updateUniverseOffset, 16); // ~60fps
+    
+    // Return the throttle function for cleanup
+    return () => {
+      throttledUpdate.cancel();
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+    };
+  }, []);
+
+  // Throttle function to limit updates
+  function throttle(func: Function, limit: number) {
+    let inThrottle = false;
+    let lastFunc: ReturnType<typeof setTimeout>;
+    let lastRan: number;
+    
+    const throttled = function(this: any, ...args: any[]) {
+      if (!inThrottle) {
+        func.apply(this, args);
+        lastRan = Date.now();
+        inThrottle = true;
+        setTimeout(() => {
+          inThrottle = false;
+        }, limit);
+      } else {
+        clearTimeout(lastFunc);
+        lastFunc = setTimeout(() => {
+          if (Date.now() - lastRan >= limit) {
+            func.apply(this, args);
+            lastRan = Date.now();
+          }
+        }, limit - (Date.now() - lastRan));
+      }
+    };
+    
+    throttled.cancel = function() {
+      clearTimeout(lastFunc);
+    };
+    
+    return throttled;
+  }
+
+  // Complete rewrite of planet tracking for maximum smoothness
+  useFrame(() => {
+    if (focusedPlanet && !isPaused && trackingEnabled) {
+      const { system, planetIndex, zoomDistance } = focusedPlanet;
+      const planet = system.planets[planetIndex];
+      
+      if (planet) {
+        // Get star position
+        const starPosition = equatorialToCartesian(system.ra, system.dec, system.sy_dist);
+        const starVector = new THREE.Vector3(...starPosition);
+        
+        // Get current planet angle
+        const planetKey = `${system.hostname}-${planetIndex}`;
+        const currentPlanetAngle = planetAnglesRef.current.get(planetKey) || 0;
+        
+        // Calculate orbit radius in parsecs
+        const orbitRadius = (planet.pl_orbsmax || 
+          (planet.pl_orbper ? Math.pow(planet.pl_orbper / 365, 2/3) : planetIndex + 1)) / 206265;
+        
+        // Calculate current planet position relative to its star
+        const planetX = orbitRadius * Math.cos(currentPlanetAngle);
+        const planetZ = orbitRadius * Math.sin(currentPlanetAngle);
+        const planetLocalPosition = new THREE.Vector3(planetX, 0, planetZ);
+        
+        // Calculate planet's absolute position in space
+        const planetWorldPosition = starVector.clone().add(planetLocalPosition);
+        
+        // CRITICAL CHANGE: Set universe offset directly without any smoothing or state updates
+        // This immediately centers the planet in the viewport
+        universeOffsetRef.current.copy(planetWorldPosition);
+        
+        // Calculate camera target position (on the day side of the planet)
+        // This is the direction from planet to star (the sun-lit side)
+        const sunDirection = planetLocalPosition.clone().multiplyScalar(-1).normalize();
+        
+        // Position camera at a fixed distance from the planet, on the sun-lit side
+        const idealCameraPosition = sunDirection.clone().multiplyScalar(zoomDistance);
+        
+        // If camera is not yet positioned properly, snap it to the ideal position
+        if (!isAnimatingRef.current) {
+          camera.position.copy(idealCameraPosition);
+          camera.lookAt(0, 0, 0);
+          isAnimatingRef.current = true;
+        } else {
+          // Very gentle interpolation for camera movement
+          camera.position.lerp(idealCameraPosition, 0.05);
+          
+          // Keep the camera pointed at the origin (where the planet is)
+          camera.lookAt(0, 0, 0);
+        }
+        
+        // Directly update the universe offset state every frame for perfect sync
+        // This is the key to eliminating jerkiness
+        setUniverseOffset(planetWorldPosition.clone());
+        
+        // Make sure controls are updated but don't allow them to change the target
+        if (controlsRef.current) {
+          controlsRef.current.target.set(0, 0, 0);
+          controlsRef.current.update();
+        }
+      }
+    }
+  });
+  
+  // Manage orbit controls based on tracking state
+  useEffect(() => {
+    if (!controlsRef.current) return;
+    
+    if (trackingEnabled && focusedPlanet) {
+      // Disable rotation when tracking to maintain same view of planet
+      controlsRef.current.enableRotate = false;
+    } else {
+      // Enable rotation when not tracking
+      controlsRef.current.enableRotate = true;
+    }
+  }, [trackingEnabled, focusedPlanet]);
+  
+  // Allow resetting the focused planet when clicking elsewhere
+  const handleSceneClick = useCallback((e: any) => {
+    // Only handle direct background clicks
+    if (focusedPlanet) {
+      setFocusedPlanet(null);
+      
+      // Ensure tracking is enabled for next planet focus
+      setTrackingEnabled(true);
+    }
+  }, [focusedPlanet]);
+  
+  // Create tracking indicator component
+  const TrackingIndicator = () => {
+    if (!focusedPlanet) return null;
+    
+    const planetName = focusedPlanet.system.planets[focusedPlanet.planetIndex].pl_name;
+    const trackingStatus = trackingEnabled ? "Tracking" : "Tracking Paused";
+    
+    return (
+      <Html position={[0, 0, 0]} center style={{ pointerEvents: 'none' }}>
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.7)',
+          color: trackingEnabled ? '#4CAF50' : '#FF9800',
+          padding: '8px 16px',
+          borderRadius: '4px',
+          fontFamily: 'Arial, sans-serif',
+          fontSize: '14px',
+          opacity: showTrackingIndicator ? 1 : 0,
+          transition: 'opacity 0.5s',
+        }}>
+          {trackingStatus}: {planetName}
+          <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '4px' }}>
+            Press T to {trackingEnabled ? 'disable' : 'enable'} tracking
+          </div>
+          {!trackingEnabled && (
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                // Reset camera view to maintain same phase
+                if (initialCameraQuaternionRef.current && camera) {
+                  camera.quaternion.copy(initialCameraQuaternionRef.current);
+                  setTrackingEnabled(true);
+                }
+              }}
+              style={{
+                marginTop: '8px',
+                padding: '4px 8px',
+                background: '#4CAF50',
+                border: 'none',
+                borderRadius: '4px',
+                color: 'white',
+                cursor: 'pointer',
+                fontSize: '12px',
+                pointerEvents: 'auto'
+              }}
+            >
+              Reset View
+            </button>
+          )}
+        </div>
+      </Html>
+    );
   };
   
   return (
     <>
       <ambientLight intensity={1.0} />
       <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade />
+      
+      {/* Add invisible sphere for background clicks */}
+      <mesh onClick={handleSceneClick} renderOrder={-1000}>
+        <sphereGeometry args={[500, 32, 32]} />
+        <meshBasicMaterial transparent opacity={0} side={THREE.BackSide} />
+      </mesh>
+      
+      {/* Show tracking indicator when focused on a planet */}
+      {focusedPlanet && <TrackingIndicator />}
+      
       {useMemo(() => {
         return visibleSystems.map((system) => {
           const isFiltered = !systemMatchesFilters(system, activeFilters);
