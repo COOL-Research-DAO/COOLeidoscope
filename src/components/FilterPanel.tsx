@@ -1,6 +1,133 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
 import { ExoplanetSystem } from '../types/Exoplanet';
-import React from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+
+// Habitable zone calculation constants
+const HZ_CONSTANTS = {
+  conservative: {
+    inner: { S_eff: 1.1, a: 1.405e-4, b: 2.622e-8, c: 3.716e-12, d: -4.557e-16 },
+    outer: { S_eff: 0.356, a: 6.171e-5, b: 1.698e-9, c: -3.198e-12, d: -5.575e-16 }
+  }
+};
+
+// Calculate habitable zone for a star
+function calculateHabitableZone(teff: number, luminosity: number) {
+  if (!teff) {
+    // Default values if temperature is missing
+    return {
+      conservative: { inner: 0.95 * Math.sqrt(luminosity), outer: 1.67 * Math.sqrt(luminosity) }
+    };
+  }
+  
+  // Calculate scaled temperature difference from solar (5780K)
+  const tStar = teff - 5780;
+  
+  // Calculate effective stellar flux for each boundary
+  const calcSeff = (params: { S_eff: number, a: number, b: number, c: number, d: number }) => {
+    const { S_eff, a, b, c, d } = params;
+    return S_eff + a * tStar + b * tStar * tStar + c * Math.pow(tStar, 3) + d * Math.pow(tStar, 4);
+  };
+  
+  // Calculate distances
+  const conservativeInnerSeff = calcSeff(HZ_CONSTANTS.conservative.inner);
+  const conservativeOuterSeff = calcSeff(HZ_CONSTANTS.conservative.outer);
+  
+  return {
+    conservative: {
+      inner: Math.sqrt(luminosity / conservativeInnerSeff),
+      outer: Math.sqrt(luminosity / conservativeOuterSeff)
+    }
+  };
+}
+
+// Check if a star system has any planets with orbits that intersect the habitable zone
+export function hasPlanetInHabitableZone(system: ExoplanetSystem): boolean {
+  // Get star parameters
+  const teff = system.st_teff || 5780; // Default to solar temperature if not available
+  
+  // Calculate luminosity if not provided
+  let luminosity = system.st_lum || null;
+  
+  // If luminosity is missing, calculate it more accurately based on star type
+  if (luminosity === null) {
+    // Use radius if available (most accurate method via Stefan-Boltzmann law)
+    if (system.st_rad) {
+      // L/L☉ = (R/R☉)² × (T/T☉)⁴
+      const t_ratio = teff / 5780;
+      luminosity = Math.pow(system.st_rad, 2) * Math.pow(t_ratio, 4);
+    } 
+    // If radius is missing but mass is available, use mass-luminosity relation
+    else if (system.st_mass) {
+      if (system.st_mass < 0.43) {
+        // M-dwarfs: L ∝ M^2.3 (for M < 0.43 M☉)
+        luminosity = Math.pow(system.st_mass, 2.3);
+      } else if (system.st_mass < 2) {
+        // K, G, F dwarfs: L ∝ M^4 (for 0.43 < M < 2 M☉)
+        luminosity = Math.pow(system.st_mass, 4);
+      } else {
+        // A, B stars: L ∝ M^3.5 (for 2 < M < 20 M☉)
+        luminosity = Math.pow(system.st_mass, 3.5);
+      }
+    }
+    // Last resort: estimate based on temperature alone
+    else {
+      // Based on temperature, identify stellar type and estimate luminosity
+      if (teff < 3500) {
+        // M dwarfs and ultracool dwarfs
+        const normalizedTemp = Math.max(teff, 2300) / 5780;
+        // For very cool stars, luminosity drops dramatically
+        luminosity = Math.pow(normalizedTemp, 7);
+      } else if (teff < 5000) {
+        // K dwarfs
+        const normalizedTemp = teff / 5780;
+        luminosity = Math.pow(normalizedTemp, 5);
+      } else if (teff < 7000) {
+        // G and F stars
+        const normalizedTemp = teff / 5780;
+        luminosity = Math.pow(normalizedTemp, 4);
+      } else {
+        // A, B, O stars
+        const normalizedTemp = teff / 5780;
+        luminosity = Math.pow(normalizedTemp, 3.5);
+      }
+    }
+  }
+  
+  // Validate luminosity (safeguard against extreme values)
+  luminosity = Math.max(0.000001, Math.min(1000000, luminosity));
+  
+  // Calculate habitable zone boundaries in AU
+  const hz = calculateHabitableZone(teff, luminosity);
+  const innerEdge = hz.conservative.inner; // AU
+  const outerEdge = hz.conservative.outer; // AU
+  
+  // Check each planet in the system
+  for (const planet of system.planets) {
+    // Get orbital parameters
+    const semiMajorAxis = planet.pl_orbsmax; // in AU
+    
+    // Skip if orbital data is missing
+    if (!semiMajorAxis) continue;
+    
+    // Get eccentricity (default to 0 if missing)
+    const eccentricity = planet.pl_orbeccen || 0;
+    
+    // Calculate perihelion and aphelion
+    const perihelion = semiMajorAxis * (1 - eccentricity); // Closest approach to star
+    const aphelion = semiMajorAxis * (1 + eccentricity); // Furthest distance from star
+    
+    // Check if orbit intersects with habitable zone
+    // Orbit intersects if perihelion is inside outer edge OR aphelion is inside inner edge
+    const orbitIntersectsHZ = 
+      (perihelion <= outerEdge && aphelion >= innerEdge);
+    
+    if (orbitIntersectsHZ) {
+      return true; // Found at least one planet in habitable zone
+    }
+  }
+  
+  // No planets in habitable zone
+  return false;
+}
 
 interface FilterRange {
   min: number;
@@ -437,6 +564,12 @@ export const FilterPanel = React.memo(function FilterPanel({ systems, onFiltersC
 
     const initialFilters: FilterOption[] = [
       {
+        label: 'Hosts potentially habitable planet(s)',
+        field: 'hasHabitablePlanet',
+        type: 'boolean',
+        selected: false
+      },
+      {
         label: 'Star Temperature (K)',
         field: 'st_teff',
         type: 'range',
@@ -820,83 +953,122 @@ export const FilterPanel = React.memo(function FilterPanel({ systems, onFiltersC
       </div>
 
       {filters.map((filter, index) => (
-        <div key={filter.field} style={{ marginBottom: '10px' }}>
-          <h3 style={{ marginBottom: '5px' }}>{filter.label}</h3>
-          
-          {filter.type === 'range' && filter.range && localState[filter.field] && (
-            <div style={{ padding: '5px 0 5px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+        <div key={filter.field} style={{ marginBottom: '20px' }}>
+          {filter.field === 'hasHabitablePlanet' ? (
+            <div style={{ 
+              backgroundColor: 'rgba(0, 180, 0, 0.15)',
+              border: '1px solid rgba(0, 180, 0, 0.4)',
+              borderRadius: '4px',
+              padding: '10px 15px',
+              marginLeft: '-15px',
+              display: 'inline-block'
+            }}>
+              <h3 style={{ 
+                marginTop: '0',
+                marginBottom: '10px'
+              }}>{filter.label}</h3>
+              
+              <label style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                cursor: 'pointer'
+              }}>
+                <input
+                  type="checkbox"
+                  checked={filter.selected}
+                  onChange={() => handleBooleanChange(index)}
+                  style={{ 
+                    marginRight: '8px',
+                    accentColor: '#4CAF50'
+                  }}
+                />
+                True
+              </label>
+            </div>
+          ) : (
+            <>
+              <h3 style={{ marginBottom: '5px' }}>{filter.label}</h3>
+              
+              {filter.type === 'range' && filter.range && localState[filter.field] && (
+                <div style={{ padding: '5px 0 5px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={filter.colorBy || false}
+                        onChange={() => handleColorByChange(index)}
+                        style={{ marginRight: '8px' }}
+                      />
+                      Color by {filter.label}
+                    </label>
+                  </div>
+                  
+                  {filter.field === 'sy_dist' ? (
+                    // Distance uses log scale
+                    <DualRangeSlider
+                      min={Math.log10(filter.range.min)}
+                      max={Math.log10(filter.range.max)}
+                      minValue={Math.log10(localState[filter.field].min)}
+                      maxValue={Math.log10(localState[filter.field].max)}
+                      step={0.01}
+                      onChange={(min, max) => {
+                        handleRangeChange(
+                          filter.field,
+                          Math.pow(10, min),
+                          Math.pow(10, max)
+                        );
+                      }}
+                      onMouseDown={startDragging}
+                      format={(value) => Math.pow(10, value).toFixed(1)}
+                    />
+                  ) : filter.field === 'planetCount' ? (
+                    // Planet count uses integer steps
+                    <DualRangeSlider
+                      min={filter.range.min}
+                      max={filter.range.max}
+                      minValue={localState[filter.field].min}
+                      maxValue={localState[filter.field].max}
+                      step={1}
+                      onChange={(min, max) => {
+                        handleRangeChange(filter.field, min, max);
+                      }}
+                      onMouseDown={startDragging}
+                      format={(value) => value.toFixed(0)}
+                    />
+                  ) : (
+                    // Normal scales
+                    <DualRangeSlider
+                      min={filter.range.min}
+                      max={filter.range.max}
+                      minValue={localState[filter.field].min}
+                      maxValue={localState[filter.field].max}
+                      step={0.01}
+                      onChange={(min, max) => {
+                        handleRangeChange(filter.field, min, max);
+                      }}
+                      onMouseDown={startDragging}
+                      format={(value) => value.toFixed(1)}
+                    />
+                  )}
+                </div>
+              )}
+
+              {filter.type === 'boolean' && (
+                <label style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  cursor: 'pointer',
+                }}>
                   <input
                     type="checkbox"
-                    checked={filter.colorBy || false}
-                    onChange={() => handleColorByChange(index)}
+                    checked={filter.selected}
+                    onChange={() => handleBooleanChange(index)}
                     style={{ marginRight: '8px' }}
                   />
-                  Color by {filter.label}
+                  True
                 </label>
-              </div>
-              
-              {filter.field === 'sy_dist' ? (
-                // Distance uses log scale
-                <DualRangeSlider
-                  min={Math.log10(filter.range.min)}
-                  max={Math.log10(filter.range.max)}
-                  minValue={Math.log10(localState[filter.field].min)}
-                  maxValue={Math.log10(localState[filter.field].max)}
-                  step={0.01}
-                  onChange={(min, max) => {
-                    handleRangeChange(
-                      filter.field,
-                      Math.pow(10, min),
-                      Math.pow(10, max)
-                    );
-                  }}
-                  onMouseDown={startDragging}
-                  format={(value) => Math.pow(10, value).toFixed(1)}
-                />
-              ) : filter.field === 'planetCount' ? (
-                // Planet count uses integer steps
-                <DualRangeSlider
-                  min={filter.range.min}
-                  max={filter.range.max}
-                  minValue={localState[filter.field].min}
-                  maxValue={localState[filter.field].max}
-                  step={1}
-                  onChange={(min, max) => {
-                    handleRangeChange(filter.field, min, max);
-                  }}
-                  onMouseDown={startDragging}
-                  format={(value) => value.toFixed(0)}
-                />
-              ) : (
-                // Normal scales
-                <DualRangeSlider
-                  min={filter.range.min}
-                  max={filter.range.max}
-                  minValue={localState[filter.field].min}
-                  maxValue={localState[filter.field].max}
-                  step={0.01}
-                  onChange={(min, max) => {
-                    handleRangeChange(filter.field, min, max);
-                  }}
-                  onMouseDown={startDragging}
-                  format={(value) => value.toFixed(1)}
-                />
               )}
-            </div>
-          )}
-
-          {filter.type === 'boolean' && (
-            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={filter.selected}
-                onChange={() => handleBooleanChange(index)}
-                style={{ marginRight: '8px' }}
-              />
-              Enable
-            </label>
+            </>
           )}
         </div>
       ))}
@@ -937,6 +1109,11 @@ export function systemMatchesFilters(system: ExoplanetSystem, filters: FilterOpt
       
       const matches = value >= filter.range.currentMin && value <= filter.range.currentMax;
       return matches;
+    } else if (filter.type === 'boolean' && filter.selected) {
+      // Handle boolean filters
+      if (filter.field === 'hasHabitablePlanet') {
+        return hasPlanetInHabitableZone(system);
+      }
     }
     return true;
   });

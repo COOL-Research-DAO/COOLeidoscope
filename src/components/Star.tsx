@@ -364,7 +364,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
             <meshBasicMaterial
               color={color}
               transparent={props.isFiltered}
-              opacity={props.isFiltered ? 0.3 : 1}
+              opacity={props.isFiltered ? 0.1 : 1}
             />
           </mesh>
         }>
@@ -381,9 +381,9 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
             <sphereGeometry args={[1, 64, 64]} /> {/* Higher resolution geometry */}
             <meshBasicMaterial
               map={starTexture || globalStarTexture}
-              color={new THREE.Color(0xFFFFFF).multiplyScalar(props.isFiltered ? 0.75 : 2.5)} /* Adjust brightness based on filter */
+              color={new THREE.Color(0xFFFFFF).multiplyScalar(props.isFiltered ? 0.55 : 2.5)} /* Adjust brightness based on filter */
               transparent={props.isFiltered}
-              opacity={props.isFiltered ? 0.3 : 1}
+              opacity={props.isFiltered ? 0.1 : 1}
               side={THREE.DoubleSide}
               alphaTest={0.1} /* Prevent z-fighting */
               depthWrite={true} /* Ensure proper depth sorting */
@@ -439,9 +439,9 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
           >
             <sphereGeometry args={[1, 16, 16]} />
             <meshBasicMaterial
-              color={color.clone().multiplyScalar(props.isFiltered ? 0.2 : 1)}
+              color={color.clone().multiplyScalar(props.isFiltered ? 0.1 : 1)}
               transparent={props.isFiltered}
-              opacity={props.isFiltered ? 0.3 : 1}
+              opacity={props.isFiltered ? 0.1 : 1}
               depthWrite={!props.isFiltered}
             />
           </mesh>
