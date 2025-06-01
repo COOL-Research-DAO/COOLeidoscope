@@ -56,7 +56,7 @@ export const VIRIDIS_COLORS = [
 export function getViridisColor(value: number | null | undefined, minValue: number, maxValue: number, useLog = true): THREE.Color {
   // Handle unknown values
   if (value === null || value === undefined || isNaN(value)) {
-    return new THREE.Color(0xCCCCCC); // Light grey for unknown values
+    return new THREE.Color(0xFFFFFF); // White for unknown values
   }
 
   let t;

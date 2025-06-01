@@ -7,6 +7,9 @@ export interface Exoplanet {
   disc_refname: string;
   pl_refname: string;
   
+  // Metadata
+  isDefault?: boolean; // Whether this is the default entry for this planet
+  
   // Orbital parameters
   pl_orbper: number | null; // Orbital period in days
   pl_orbper_err1: number | null;
@@ -47,6 +50,12 @@ export interface Exoplanet {
   
   // Additional metadata
   rowupdate: string;
+
+  // Stellar rotation
+  st_rotp: number | null; // Stellar rotation period in days
+  st_rotperr1: number | null; // Upper uncertainty
+  st_rotperr2: number | null; // Lower uncertainty
+  st_rotplim: string | null; // Limit flag
 }
 
 export interface ExoplanetSystem {
@@ -67,4 +76,8 @@ export interface ExoplanetSystem {
   st_age: number | null;
   st_age_err1: number | null;
   st_age_err2: number | null;
+  st_rotp: number | null; // Stellar Rotational Period [days]
+  st_rotperr1: number | null; // Upper uncertainty
+  st_rotperr2: number | null; // Lower uncertainty
+  st_rotplim: string | null; // Limit flag
 } 
