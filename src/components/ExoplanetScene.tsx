@@ -786,13 +786,23 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
       }, [visibleSystems, universeOffset, scale, highlightedSystem, isPaused, useUniverseOffset, sizeScale, activeFilters, colorByField, registerPlanetAngle])}
       <OrbitControls
         ref={controlsRef}
-        enableDamping
-        dampingFactor={0.05}
-        rotateSpeed={0.3}
-        panSpeed={1.0}
-        zoomSpeed={1.0}
+        enableDamping={false}
+        dampingFactor={0.01}
+        rotateSpeed={0.4}
+        panSpeed={1.5}
+        zoomSpeed={5.0}
         minDistance={Math.max(focusedObjectRadius * (1.1 / (1000 / sizeScale)), 0.0001/206265)}
-        onUpdate={(self) => {
+        maxDistance={10000}
+        screenSpacePanning={true}
+        target={[0, 0, 0]}
+        maxPolarAngle={Math.PI / 2}
+        mouseButtons={{
+          LEFT: THREE.MOUSE.PAN,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.ROTATE
+        }}
+        makeDefault
+        onUpdate={(self: any) => {
           // If we're too close, force the camera back to minimum distance
           const distance = camera.position.length();
           const minDist = Math.max(focusedObjectRadius * (1.1 / (1000 / sizeScale)), 0.0001/206265);
@@ -801,15 +811,6 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
             camera.position.copy(direction.multiplyScalar(minDist));
             self.target.set(0, 0, 0);
           }
-        }}
-        maxDistance={10000} // 10000 parsecs 
-        screenSpacePanning={true}
-        target={[0, 0, 0]}
-        maxPolarAngle={Math.PI / 2}
-        mouseButtons={{
-          LEFT: THREE.MOUSE.PAN,
-          MIDDLE: THREE.MOUSE.DOLLY,
-          RIGHT: THREE.MOUSE.ROTATE
         }}
       />
     </>
@@ -827,10 +828,110 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
   const sceneRef = useRef<SceneHandle>(null);
   const [lastSearchedSystem, setLastSearchedSystem] = useState<string | null>(null);
   const [sizeScale, setSizeScale] = useState(1);
+  const sizeSliderRef = useRef<HTMLInputElement>(null);
+  const currentValueRef = useRef(1);
   const [isPaused, setIsPaused] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<FilterOption[]>([]);
   const [colorByField, setColorByField] = useState<string | null>(null);
+
+  // Simple change handler for non-drag updates
+  const handleSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = Math.max(1, Number(e.target.value));
+    currentValueRef.current = newValue;
+    setSizeScale(newValue);
+  };
+
+  // IMPORTANT: Set up the direct DOM manipulation for the slider
+  useEffect(() => {
+    const slider = sizeSliderRef.current;
+    if (!slider) return;
+
+    let isDragging = false;
+    let rafId: number | null = null;
+    
+    const startDrag = () => {
+      isDragging = true;
+      // Set will-change for better performance
+      slider.style.willChange = 'value';
+    };
+    
+    const endDrag = () => {
+      if (isDragging) {
+        isDragging = false;
+        // Remove will-change
+        slider.style.willChange = 'auto';
+        // Ensure final state update
+        setSizeScale(currentValueRef.current);
+      }
+      
+      // Cancel any pending animation frame
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    };
+    
+    const onMove = (clientX: number) => {
+      if (!isDragging || !slider) return;
+      
+      // Cancel any previous animation frame
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      
+      // Schedule update on next animation frame
+      rafId = requestAnimationFrame(() => {
+        const rect = slider.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        const value = Math.round(1 + ratio * 999); // min=1, max=1000
+        
+        // Update DOM value immediately
+        slider.value = String(value);
+        currentValueRef.current = value;
+        
+        // Update React state during drag for immediate feedback
+        setSizeScale(value);
+      });
+    };
+    
+    // Mouse events
+    const onMouseDown = () => startDrag();
+    const onMouseMove = (e: MouseEvent) => onMove(e.clientX);
+    const onMouseUp = () => endDrag();
+    
+    // Touch events for mobile
+    const onTouchStart = () => startDrag();
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches[0]) onMove(e.touches[0].clientX);
+    };
+    const onTouchEnd = () => endDrag();
+    
+    // Attach all event listeners
+    slider.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    
+    slider.addEventListener('touchstart', onTouchStart);
+    window.addEventListener('touchmove', onTouchMove);
+    window.addEventListener('touchend', onTouchEnd);
+    
+    return () => {
+      // Clean up all event listeners
+      slider.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      
+      slider.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      
+      // Cancel any pending animation frame
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     console.log('Loading exoplanet data...');
@@ -1028,12 +1129,13 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       >
         <span style={{ fontSize: '0.8em' }}>Real size</span>
         <input
+          ref={sizeSliderRef}
           type="range"
           min="1"
           max="1000"
           step="1"
-          value={Math.max(1, sizeScale)}
-          onChange={(e) => setSizeScale(Math.max(1, Number(e.target.value)))}
+          defaultValue={String(sizeScale)}
+          onChange={handleSizeChange}
           onKeyDown={(e) => {
             if (e.code === 'Space') {
               e.preventDefault();
@@ -1041,7 +1143,10 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
               setIsPaused(prev => !prev);
             }
           }}
-          style={{ flex: 1 }}
+          style={{ 
+            flex: 1,
+            cursor: 'pointer'
+          }}
         />
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: '0.8em' }}>Enlarged</span>
