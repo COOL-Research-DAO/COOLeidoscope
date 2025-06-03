@@ -6,6 +6,7 @@ import { ExoplanetSystem } from '../types/Exoplanet';
 import { Planets } from './Planets';
 import { FilterOption } from './FilterPanel';
 import { getViridisColor, temperatureToColor } from '../utils/colorUtils';
+import { StarLabel } from './StarLabel';
 
 // Global texture singleton for all stars to share
 let globalStarTexture: THREE.Texture | null = null;
@@ -25,6 +26,19 @@ const glowTexture = (() => {
   gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');     // Fade to transparent
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 64, 64);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+})();
+
+// Create a separate text background texture
+const textBgTexture = (() => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+  ctx.fillRect(0, 0, 128, 64);
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;
   return texture;
@@ -182,24 +196,8 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
     }
   }, [showImage, starTexture, isLoadingTexture]);
 
-  // Common elements
-  const labelElement = (hovered || props.isHighlighted) && (
-    <Billboard>
-      <Text
-        position={[0, 2, 0]}
-        fontSize={0.8}
-        color="white"
-        anchorX="center"
-        anchorY="middle"
-        renderOrder={1}
-        outlineWidth={0.08}
-        outlineColor="black"
-      >
-        {system.hostname}
-      </Text>
-    </Billboard>
-  );
-
+  // Common elements (removed since we're using a different approach)
+  
   const pointLightElement = showImage && (
     <pointLight
       color={color}
@@ -208,6 +206,17 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
       decay={2}
     />
   );
+
+  // Create a custom material for the text
+  const textMaterial = useMemo(() => {
+    return new THREE.MeshBasicMaterial({
+      color: 'white',
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+  }, []);
 
   // Render based on distance
   return (
@@ -235,6 +244,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
             onDoubleClick={props.onDoubleClick}
             scale={[starRadius, starRadius, starRadius]}
             userData={{ type: 'star', hostname: system.hostname }}
+            renderOrder={1}
           >
             <sphereGeometry args={[1, 64, 64]} /> {/* Higher resolution geometry */}
             <meshBasicMaterial
@@ -250,15 +260,16 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
           </mesh>
           
           {/* Gradient glow effect for textured stars */}
-          <Billboard>
+          <Billboard renderOrder={2}>
             {/* Outer halo */}
-            <mesh scale={[starRadius * 5.0, starRadius * 5.0, 1]}>
+            <mesh scale={[starRadius * 5.0, starRadius * 5.0, 1]} renderOrder={2}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
                 transparent={true}
                 opacity={props.isFiltered ? 0.09 : 1.5}
                 depthWrite={false}
+                depthTest={false}
                 side={THREE.DoubleSide}
                 map={glowTexture}
                 alphaMap={glowTexture}
@@ -266,13 +277,14 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
               />
             </mesh>
             {/* Inner halo */}
-            <mesh scale={[starRadius * 2.4, starRadius * 2.4, 1]}>
+            <mesh scale={[starRadius * 2.4, starRadius * 2.4, 1]} renderOrder={3}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
                 transparent={true}
                 opacity={props.isFiltered ? 0.09 : 3.0}
                 depthWrite={false}
+                depthTest={false}
                 side={THREE.DoubleSide}
                 map={glowTexture}
                 alphaMap={glowTexture}
@@ -294,6 +306,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
             onDoubleClick={props.onDoubleClick}
             scale={[starRadius, starRadius, starRadius]}
             userData={{ type: 'star', hostname: system.hostname }}
+            renderOrder={1}
           >
             <sphereGeometry args={[1, 16, 16]} />
             <meshBasicMaterial
@@ -305,15 +318,16 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
           </mesh>
           
           {/* Gradient glow effect */}
-          <Billboard>
+          <Billboard renderOrder={2}>
             {/* Outer halo */}
-            <mesh scale={[haloRadius * 16.0, haloRadius * 16.0, 1]}>
+            <mesh scale={[haloRadius * 16.0, haloRadius * 16.0, 1]} renderOrder={2}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
                 transparent={true}
-                opacity={props.isFiltered ? 0.09 : 0.6}
+                opacity={props.isFiltered ? 0.09 : 0.3}
                 depthWrite={false}
+                depthTest={false}
                 side={THREE.DoubleSide}
                 map={glowTexture}
                 alphaMap={glowTexture}
@@ -321,13 +335,14 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
               />
             </mesh>
             {/* Inner halo */}
-            <mesh scale={[haloRadius * 4.0, haloRadius * 4.0, 1]}>
+            <mesh scale={[haloRadius * 4.0, haloRadius * 4.0, 1]} renderOrder={3}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
                 transparent={true}
-                opacity={props.isFiltered ? 0.09 : 1.0}
+                opacity={props.isFiltered ? 0.09 : 0.5}
                 depthWrite={false}
+                depthTest={false}
                 side={THREE.DoubleSide}
                 map={glowTexture}
                 alphaMap={glowTexture}
@@ -353,7 +368,13 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
         registerPlanetAngle={props.registerPlanetAngle}
       />
       
-      {labelElement}
+      {/* Use the dedicated StarLabel component */}
+      <StarLabel 
+        name={system.hostname}
+        position={new THREE.Vector3(0, 0, 0)}
+        starRadius={starRadius}
+        visible={hovered || !!props.isHighlighted}
+      />
     </group>
   );
 }, (prevProps, nextProps) => {
