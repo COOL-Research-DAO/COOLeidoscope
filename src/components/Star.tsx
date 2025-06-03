@@ -36,7 +36,7 @@ interface StarProps {
   isFar: boolean;
   onClick: () => void;
   onDoubleClick: () => void;
-  onPlanetDoubleClick?: (system: ExoplanetSystem, planetIndex: number) => void;
+  onPlanetClick?: (system: ExoplanetSystem, planetIndex: number) => void;
   registerPlanetAngle?: (systemName: string, planetIndex: number, angle: number) => void;
   isHighlighted?: boolean;
   isPaused: boolean;
@@ -349,7 +349,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
         sizeScale={props.sizeScale}
         systemMaxScale={props.systemMaxScale}
         planetScaleRatio={props.planetScaleRatio}
-        onPlanetDoubleClick={props.onPlanetDoubleClick}
+        onPlanetClick={props.onPlanetClick}
         registerPlanetAngle={props.registerPlanetAngle}
       />
       

@@ -1,0 +1,156 @@
+{
+  "object_id": "TRAPPIST-1b",
+  "system": "TRAPPIST-1",
+  "category": "Exoplanet",
+  "discovery": {
+    "discovery_year": 2016,
+    "discovered_by": "Gillon et al.",
+    "discovery_method": "Transit",
+    "telescope": "TRAPPIST-South, Spitzer Space Telescope"
+  },
+  "object_properties": {
+    "mass_earth": 1.374,
+    "radius_earth": 1.116,
+    "orbital_period_days": 1.51087081,
+    "semi_major_axis_au": 0.01111,
+    "equilibrium_temperature_K": 392,
+    "orbital_eccentricity": 0.00622,
+    "mean_density_g_cm3": 3.46,
+    "host_star": "TRAPPIST-1",
+    "number_in_system": 7
+  },
+  "linked_objects": [
+    { "type": "star", "id": "trappist-1" },
+    { "type": "exoplanet", "id": "trappist-1c" },
+    { "type": "exoplanet", "id": "trappist-1d" }
+  ],
+  "observational_data": {
+    "data_sources": [
+      {
+        "name": "NASA Exoplanet Archive",
+        "url": "https://exoplanetarchive.ipac.caltech.edu/overview/TRAPPIST-1b"
+      },
+      {
+        "name": "Open Exoplanet Catalogue",
+        "url": "https://github.com/OpenExoplanetCatalogue/open_exoplanet_catalogue/blob/master/systems/TRAPPIST-1.xml"
+      },
+      {
+        "name": "NASA ADS",
+        "url": "https://ui.adsabs.harvard.edu/search/q=TRAPPIST-1b"
+      }
+    ],
+    "spectral_observations": [
+      {
+        "instrument": "JWST NIRSpec",
+        "data_product": "Transmission spectra (2023)",
+        "url": "https://jwst.esac.esa.int/archive/?ACTION=SHOWPLANE&ID=008ac1b8-1a2a-470c-be9c-d533fb03287d,5929a743-2948-4acb-8c26-f05a96ce10ee"
+      }
+    ]
+  },
+  "funding_and_institutions": {
+    "grants": [
+      {
+        "agency": "NASA",
+        "program": "Exoplanet Research Program",
+        "award_id": "NNX16AI14G",
+        "recipient": "MIT"
+      },
+      {
+        "agency": "European Research Council",
+        "program": "Consolidator Grant",
+        "award_id": "773193",
+        "recipient": "Université de Liège"
+      }
+    ],
+    "philanthropy": [
+      {
+        "organization": "Breakthrough Watch",
+        "url": "https://breakthroughinitiatives.org/initiative/4"
+      }
+    ]
+  },
+  "media_and_visualizations": {
+    "images": [
+      {
+        "title": "TRAPPIST-1b Poster",
+        "credit": "NASA/JPL-Caltech",
+        "url": "https://exoplanets.nasa.gov/internal_resources/1385"
+      }
+    ],
+    "videos": [
+      {
+        "title": "NASA’s Exoplanet Travel Bureau - TRAPPIST-1 System Tour",
+        "platform": "YouTube",
+        "url": "https://www.youtube.com/watch?v=bRa7tzLw5gY"
+      }
+    ],
+    "3d_models": [
+      {
+        "title": "TRAPPIST-1 Interactive System",
+        "platform": "Eyes on Exoplanets",
+        "url": "https://eyes.nasa.gov/apps/exo/#/planet/TRAPPIST-1b"
+      }
+    ]
+  },
+  "public_engagement": {
+    "citizen_science": [
+      {
+        "platform": "Zooniverse - Exoplanet Explorers",
+        "url": "https://www.zooniverse.org/projects/ianc2/exoplanet-explorers"
+      }
+    ],
+    "popular_articles": [
+      {
+        "title": "Seven Earth-size planets discovered",
+        "source": "NASA",
+        "url": "https://www.nasa.gov/press-release/nasa-telescope-reveals-largest-batch-of-earth-size-habitable-zone-planets-around"
+      },
+      {
+        "title": "TRAPPIST-1: A planetary system for the ages?",
+        "source": "Space.com",
+        "url": "https://www.space.com/35851-trappist-1-system-seven-earth-size-exoplanets.html"
+      }
+    ],
+    "community_links": [
+      {
+        "platform": "Reddit",
+        "subreddit": "r/exoplanets",
+        "url": "https://www.reddit.com/r/exoplanets/comments/14v7xyx/jwst_detects_water_in_trappist1b/"
+      }
+    ]
+  },
+  "key_people": [
+    {
+      "name": "Michaël Gillon",
+      "role": "Principal Investigator (discovery)",
+      "institution": "Université de Liège",
+      "orcid": "0000-0002-5705-1837"
+    },
+    {
+      "name": "Sean Carey",
+      "role": "Spitzer Project Scientist",
+      "institution": "IPAC/Caltech"
+    },
+    {
+      "name": "Elsa Ducrot",
+      "role": "JWST Spectroscopy Lead",
+      "institution": "CEA Saclay"
+    }
+  ],
+  "publications": [
+    {
+      "title": "Seven temperate terrestrial planets around the nearby ultracool dwarf star TRAPPIST-1",
+      "authors": ["Gillon et al."],
+      "journal": "Nature",
+      "year": 2017,
+      "doi": "10.1038/nature21360"
+    },
+    {
+      "title": "A temperate Earth-sized planet transiting a nearby ultracool dwarf star",
+      "authors": ["Gillon et al."],
+      "journal": "Nature",
+      "year": 2016,
+      "doi": "10.1038/nature17448"
+    }
+  ]
+}

@@ -12,7 +12,7 @@ interface PlanetsProps {
   sizeScale: number;
   systemMaxScale: number;
   planetScaleRatio: number;
-  onPlanetDoubleClick?: (system: ExoplanetSystem, planetIndex: number) => void;
+  onPlanetClick?: (system: ExoplanetSystem, planetIndex: number) => void;
   registerPlanetAngle?: (systemName: string, planetIndex: number, angle: number, size?: number) => void;
 }
 
@@ -24,7 +24,7 @@ interface TextureCache {
   };
 }
 
-export function Planets({ system, visible, isPaused, starRadius, sizeScale, systemMaxScale, planetScaleRatio, onPlanetDoubleClick, registerPlanetAngle }: PlanetsProps) {
+export function Planets({ system, visible, isPaused, starRadius, sizeScale, systemMaxScale, planetScaleRatio, onPlanetClick, registerPlanetAngle }: PlanetsProps) {
   const orbitSegments = 64;
   const orbitScaleFactor = 1 / 206265; // Convert AU to parsecs
   const { camera } = useThree();
@@ -813,10 +813,10 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     });
   });
 
-  // Add a planet double-click handler
-  const handlePlanetDoubleClick = (index: number) => {
-    if (onPlanetDoubleClick) {
-      onPlanetDoubleClick(system, index);
+  // Add a planet click handler
+  const handlePlanetClick = (index: number) => {
+    if (onPlanetClick) {
+      onPlanetClick(system, index);
     }
   };
 
@@ -846,10 +846,9 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
               <mesh
                 onPointerOver={() => setHoveredPlanet(index)}
                 onPointerOut={() => setHoveredPlanet(null)}
-                onClick={(e) => { e.stopPropagation(); }} 
-                onDoubleClick={(e) => { 
+                onClick={(e) => { 
                   e.stopPropagation(); 
-                  handlePlanetDoubleClick(index); 
+                  handlePlanetClick(index); 
                 }}
                 userData={{ type: 'planet', hostname: system.hostname, index }}
               >
@@ -885,11 +884,11 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                   <group ref={moonRef}>
                     <mesh
                       scale={[planetSizes[index] * 0.273, planetSizes[index] * 0.273, planetSizes[index] * 0.273]}
-                      onDoubleClick={(e) => { 
+                      onClick={(e) => { 
                         e.stopPropagation(); 
                         // Special case for the moon
-                        if (isEarth && onPlanetDoubleClick) {
-                          onPlanetDoubleClick(system, -1); // Use -1 to indicate the moon
+                        if (isEarth && onPlanetClick) {
+                          onPlanetClick(system, -1); // Use -1 to indicate the moon
                         }
                       }}
                     >
