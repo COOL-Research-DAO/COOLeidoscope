@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import { ExoplanetSystem } from '../types/Exoplanet';
+import { PlanetLabel } from './PlanetLabel';
 
 interface PlanetsProps {
   system: ExoplanetSystem;
@@ -68,6 +69,13 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   
   // Used to store random texture assignments
   const [randomTextureAssignments] = useState<Map<number, string>>(new Map());
+
+  // Track planet positions for labels
+  const [planetPositions, setPlanetPositions] = useState<THREE.Vector3[]>([]);
+
+  // Track moon position for its label
+  const [moonPosition, setMoonPosition] = useState<THREE.Vector3 | null>(null);
+  const [showMoonLabel, setShowMoonLabel] = useState(false);
 
   // Function to determine if a planet is gas giant or terrestrial
   const isPlanetGasGiant = (planet: any): boolean => {
@@ -910,79 +918,94 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     const { camera } = state;
     const distanceToCamera = camera.position.length();
 
-    // --- Update Text Labels ---
-    // This should run even when paused so labels appear on hover
-    planetTextRefs.current.forEach((group, index) => {
-      if (group && hoveredPlanet === index) { // Only update the hovered label
-        const planetGroup = planetRefs.current[index];
-        if (planetGroup) {
-          // --- Define Min/Max for Offset and Scale ---
-          const minLabelOffset = 0.00000001; // Minimum distance above planet (world units)
-          const maxLabelOffset = 0.0000001;  // Maximum distance above planet (world units)
-          const minLabelScale  = 0.000005; // Minimum visual scale (world units)
-          const maxLabelScale  = 0.001;   // Maximum visual scale (world units)
-          const baseScaleFactor = 0.05; // Base factor for distance scaling
+    // Always calculate and update positions for planets even when paused
+    // This ensures planets are visible when system changes during pause
+    const newPositions: THREE.Vector3[] = [];
+    let newMoonPosition: THREE.Vector3 | null = null;
+    
+    planetRefs.current.forEach((group, index) => {
+      if (!group || index >= currentAnglesRef.current.length) return;
 
-          // --- Calculate Clamped Offset ---
-          const rawOffset = (planetSizes[index] || 0.0000001) * 0.0001; // Original offset calculation
-          const clampedOffset = Math.min(maxLabelOffset, Math.max(minLabelOffset, rawOffset));
+      const planet = system.planets[index];
+      const { orbitRadius } = calculateOrbitPosition(planet, index, 0);
 
-          // Position the label slightly above the planet using clamped offset
-          group.position.copy(planetGroup.position);
-          group.position.y += clampedOffset; // Apply clamped offset
+      // Use stored angle (don't update it if paused)
+      const angle = currentAnglesRef.current[index] % (2 * Math.PI);
+      
+      // Calculate position using the current angle
+      const position = calculateOrbitPosition(planet, index, angle);
 
-          // Make label face the camera
-          group.quaternion.copy(camera.quaternion);
+      // Always update planet position, even when paused
+      group.position.x = position.x;
+      group.position.z = position.z;
+      group.position.y = 0; // Ensure planets stay on the orbital plane
+      
+      // Store the current position for labels
+      newPositions[index] = new THREE.Vector3(
+        position.x,
+        0, // Planets are on the orbital plane (y=0)
+        position.z
+      );
 
-          // --- Calculate Clamped Scale ---
-          const rawScale = distanceToCamera * baseScaleFactor; // Original scale calculation
-          const clampedScale = Math.min(maxLabelScale, Math.max(minLabelScale, rawScale));
+      // Update planet rotation (even when paused, update one time)
+      const rotationPeriod = getPlanetRotationPeriod(planet);
+      const rotationDirection = rotationPeriod >= 0 ? 1 : -1;
+      group.rotation.set(0, rotationAnglesRef.current[index] * rotationDirection, 0);
 
-          // Scale label based on distance, using clamped scale
-          group.scale.setScalar(clampedScale); // Apply clamped scale
-        }
-      } else if (group && hoveredPlanet !== index) {
-         // Ensure non-hovered labels are hidden or reset scale
-         group.scale.setScalar(0); // Hide non-hovered labels
+      // Update planet shader lighting (even when paused)
+      if (group.children[0] instanceof THREE.Mesh && planetShaders.current[index]) {
+        const planetPosition = group.position;
+        const starPosition = new THREE.Vector3(0, 0, 0);
+        const lightDir = starPosition.clone().sub(planetPosition).normalize();
+        planetShaders.current[index].uniforms.lightDirection.value.copy(lightDir);
+      }
+
+      // Update moon if this is Earth (even when paused)
+      const isEarth = planet.pl_name?.toLowerCase().includes('earth');
+      if (isEarth && moonRef.current) {
+        const scaledOrbitRadius = getMoonOrbitRadius();
+        const moonAngle = moonAngleRef.current % (2 * Math.PI);
+        
+        const moonLocalPosition = new THREE.Vector3(
+          scaledOrbitRadius * Math.cos(moonAngle),
+          0,
+          scaledOrbitRadius * Math.sin(moonAngle)
+        );
+        
+        // Set moon's position
+        moonRef.current.position.copy(moonLocalPosition);
+        
+        // Calculate moon's absolute position
+        const earthPosition = new THREE.Vector3(
+          group.position.x,
+          group.position.y,
+          group.position.z
+        );
+        
+        newMoonPosition = new THREE.Vector3(
+          earthPosition.x + moonLocalPosition.x,
+          earthPosition.y + moonLocalPosition.y,
+          earthPosition.z + moonLocalPosition.z
+        );
+        
+        // Update moon shader lighting
+        const moonAbsolutePosition = moonLocalPosition.clone().add(earthPosition);
+        const starPosition = new THREE.Vector3(0, 0, 0);
+        const lightDir = starPosition.clone().sub(moonAbsolutePosition).normalize();
+        moonShaderMaterial.uniforms.lightDirection.value.copy(lightDir);
       }
     });
-
+    
+    // Update positions for labels
+    setPlanetPositions(newPositions);
+    setMoonPosition(newMoonPosition);
+    
+    // If paused, don't update orbital or rotation angles
     if (isPaused) {
-      // Ensure shader light direction is updated even when paused if hovered
-      if (hoveredPlanet !== null) {
-        const planetGroup = planetRefs.current[hoveredPlanet];
-        const planet = system.planets[hoveredPlanet];
-         if (planetGroup && planetShaders.current[hoveredPlanet]) {
-            const planetPosition = planetGroup.position;
-            const starPosition = new THREE.Vector3(0, 0, 0);
-            const lightDir = starPosition.clone().sub(planetPosition).normalize();
-            planetShaders.current[hoveredPlanet].uniforms.lightDirection.value.copy(lightDir);
-         }
-      }
-      return; // Stop further updates like position changes
+      return;
     }
-
-    // --- Debug check for textures ---
-    // Every 60 frames (approximately once per second), check if textures are being applied
-    if (Math.floor(state.clock.elapsedTime * 60) % 60 === 0) {
-      // Log texture status for detailed planets
-      const detailedIndices = detailedPlanets
-        .map((isDetailed, idx) => isDetailed ? idx : -1)
-        .filter(idx => idx !== -1);
-      
-      if (detailedIndices.length > 0) {
-        detailedIndices.forEach(idx => {
-          const shader = planetShaders.current[idx];
-          if (shader) {
-            const useTexture = shader.uniforms.useTexture.value;
-            const hasTexture = shader.uniforms.planetTexture.value !== null;
-            console.log(`Planet ${system.planets[idx].pl_name} texture status: useTexture=${useTexture}, hasTexture=${hasTexture}`);
-          }
-        });
-      }
-    }
-
-    // --- Update Planet Positions & Shaders (Only if not paused) ---
+    
+    // Only update animation angles if not paused
     planetRefs.current.forEach((group, index) => {
       if (!group || index >= currentAnglesRef.current.length) return;
 
@@ -1000,84 +1023,30 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       // --- Incremental Angle Update ---
       const deltaAngle = -orbitSpeed * delta; // Inversion du sens de révolution (horaire)
       currentAnglesRef.current[index] += deltaAngle; // Add the change to the stored angle
-
-      // Use the updated stored angle (modulo 2*PI)
-      const angle = currentAnglesRef.current[index] % (2 * Math.PI);
       
       // Register the angle and size with the parent component if the function exists
       if (registerPlanetAngle) {
-        registerPlanetAngle(system.hostname, index, angle, planetSizes[index]);
+        registerPlanetAngle(system.hostname, index, currentAnglesRef.current[index], planetSizes[index]);
       }
       
-      // Calculate position using shared function with the incrementally updated angle
-      const position = calculateOrbitPosition(planet, index, angle);
-
-      // Update planet position
-      group.position.x = position.x;
-      group.position.z = position.z;
-      group.position.y = 0; // Ensure planets stay on the orbital plane
-
       // Update planet rotation
       const rotationPeriod = getPlanetRotationPeriod(planet);
-      // Handle negative rotation periods (retrograde rotation) correctly
       const rotationSpeed = (2 * Math.PI) / (Math.abs(rotationPeriod) * 24 * 60 * 60); 
-      // Use original sign to determine direction
-      const rotationDirection = rotationPeriod >= 0 ? 1 : -1;
-      
       rotationAnglesRef.current[index] += rotationSpeed * delta * 100000; // Scale up for visibility
-
-      // Apply both axial tilt and rotation
-      group.rotation.set(0, rotationAnglesRef.current[index] * rotationDirection, 0);
-
-      // Update planet shader lighting
-      if (group.children[0] instanceof THREE.Mesh && planetShaders.current[index]) {
-        const planetPosition = group.position; // Use the updated group position
-        const starPosition = new THREE.Vector3(0, 0, 0);
-        const lightDir = starPosition.clone().sub(planetPosition).normalize();
-        planetShaders.current[index].uniforms.lightDirection.value.copy(lightDir);
-      }
-
-      // Update moon if this is Earth
+      
+      // Update moon angle if this is Earth
       const isEarth = planet.pl_name?.toLowerCase().includes('earth');
       if (isEarth && moonRef.current) {
-        const scaledOrbitRadius = getMoonOrbitRadius();
         const moonOrbitalPeriod = 27.32 / 365; // Moon period in years
         const moonSpeedFactor = 1 / moonOrbitalPeriod;
         const moonOrbitSpeed = moonSpeedFactor * Math.pow(Math.max(1e-9, 30000 * distanceToCamera), 1.5);
-        
         moonAngleRef.current -= moonOrbitSpeed * delta; // Inversion du sens de révolution de la Lune
-        const moonAngle = moonAngleRef.current % (2 * Math.PI);
         
-        // Register the moon angle and size with the parent component if the function exists
+        // Register the moon angle
         if (registerPlanetAngle) {
-          // For the moon, use the Earth's size scaled by the moon/earth ratio (0.273)
           const moonSize = planetSizes[index] * 0.273;
-          registerPlanetAngle(system.hostname, -1, moonAngle, moonSize);
+          registerPlanetAngle(system.hostname, -1, moonAngleRef.current, moonSize);
         }
-        
-        // Calculate moon's absolute position by adding Earth's position
-        const earthPosition = new THREE.Vector3(
-          planetRefs.current[index].position.x,
-          planetRefs.current[index].position.y,
-          planetRefs.current[index].position.z
-        );
-        
-        const moonLocalPosition = new THREE.Vector3(
-          scaledOrbitRadius * Math.cos(moonAngle),
-          0,
-          scaledOrbitRadius * Math.sin(moonAngle)
-        );
-        
-        // Set moon's position relative to Earth
-        moonRef.current.position.copy(moonLocalPosition);
-        
-        // Calculate moon's absolute position for lighting
-        const moonAbsolutePosition = moonLocalPosition.clone().add(earthPosition);
-        
-        // Update moon shader lighting based on absolute position relative to star
-        const starPosition = new THREE.Vector3(0, 0, 0);
-        const lightDir = starPosition.clone().sub(moonAbsolutePosition).normalize();
-        moonShaderMaterial.uniforms.lightDirection.value.copy(lightDir);
       }
     });
   });
@@ -1088,6 +1057,65 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       onPlanetDoubleClick(system, index);
     }
   };
+
+  // Handle moon hover state
+  const [hoveredMoon, setHoveredMoon] = useState(false);
+
+  // Initialize planets when the system changes, even if animation is paused
+  useEffect(() => {
+    // Initialize positions for all planets
+    const initialPositions: THREE.Vector3[] = [];
+    let initialMoonPosition: THREE.Vector3 | null = null;
+    
+    system.planets.forEach((planet, index) => {
+      // Calculate initial position (angle = 0)
+      const position = calculateOrbitPosition(planet, index, currentAnglesRef.current[index] || 0);
+      
+      // Update planet refs if available
+      if (planetRefs.current[index]) {
+        planetRefs.current[index].position.x = position.x;
+        planetRefs.current[index].position.z = position.z;
+        planetRefs.current[index].position.y = 0;
+      }
+      
+      // Store position for labels
+      initialPositions[index] = new THREE.Vector3(
+        position.x,
+        0,
+        position.z
+      );
+      
+      // Initialize moon position for Earth
+      const isEarth = planet.pl_name?.toLowerCase().includes('earth');
+      if (isEarth && moonRef.current) {
+        const scaledOrbitRadius = getMoonOrbitRadius();
+        const moonAngle = moonAngleRef.current || 0;
+        
+        const moonLocalPosition = new THREE.Vector3(
+          scaledOrbitRadius * Math.cos(moonAngle),
+          0,
+          scaledOrbitRadius * Math.sin(moonAngle)
+        );
+        
+        // Set moon's position
+        moonRef.current.position.copy(moonLocalPosition);
+        
+        // Calculate absolute moon position
+        const earthPosition = new THREE.Vector3(position.x, 0, position.z);
+        initialMoonPosition = new THREE.Vector3(
+          earthPosition.x + moonLocalPosition.x,
+          earthPosition.y + moonLocalPosition.y,
+          earthPosition.z + moonLocalPosition.z
+        );
+      }
+    });
+    
+    // Update positions state
+    setPlanetPositions(initialPositions);
+    if (initialMoonPosition) {
+      setMoonPosition(initialMoonPosition);
+    }
+  }, [system]);
 
   if (!visible) return null;
 
@@ -1154,6 +1182,8 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                   <group ref={moonRef}>
                     <mesh
                       scale={[planetSizes[index] * 0.273, planetSizes[index] * 0.273, planetSizes[index] * 0.273]}
+                      onPointerOver={() => setHoveredMoon(true)}
+                      onPointerOut={() => setHoveredMoon(false)}
                       onDoubleClick={(e) => { 
                         e.stopPropagation(); 
                         // Special case for the moon
@@ -1169,27 +1199,31 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                 </group>
               )}
             </group>
-            
-            {/* Planet label */}
-            {hoveredPlanet === index && (
-              <group ref={(el) => { if (el) planetTextRefs.current[index] = el; }}>
-                <Text
-                  position={[0, 2, 0]}
-                  fontSize={0.8}
-                  color="white"
-                  anchorX="center"
-                  anchorY="middle"
-                  renderOrder={1}
-                  outlineWidth={0.08}
-                  outlineColor="black"
-                >
-                  {planet.pl_name}
-                </Text>
-              </group>
-            )}
           </group>
         );
       })}
+      
+      {/* Planet labels - outside the map to avoid recreation on position changes */}
+      {system.planets.map((planet, index) => (
+        <PlanetLabel
+          key={`label-${planet.pl_name}`}
+          name={planet.pl_name}
+          position={planetPositions[index] || new THREE.Vector3()}
+          planetRadius={planetSizes[index]}
+          visible={hoveredPlanet === index}
+        />
+      ))}
+      
+      {/* Moon label */}
+      {moonPosition && (
+        <PlanetLabel
+          key="moon-label"
+          name="Moon"
+          position={moonPosition}
+          planetRadius={0.0001} // Simple fixed size for moon
+          visible={hoveredMoon}
+        />
+      )}
     </group>
   );
 } 
