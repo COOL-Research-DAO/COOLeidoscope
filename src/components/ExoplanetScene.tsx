@@ -51,6 +51,7 @@ interface SceneProps {
   onStarFound?: (system: ExoplanetSystem) => void;
   onStarDoubleClick?: (system: ExoplanetSystem) => void;
   onPlanetClick?: (system: ExoplanetSystem, planetIndex: number) => void;
+  onPlanetDoubleClick?: (system: ExoplanetSystem, planetIndex: number) => void;
   sizeScale: number;
   isPaused: boolean;
   setIsPaused: React.Dispatch<React.SetStateAction<boolean>>;
@@ -62,6 +63,7 @@ interface SceneProps {
 
 export interface SceneHandle {
   focusOnStar: (system: ExoplanetSystem) => void;
+  focusOnPlanet: (system: ExoplanetSystem, planetIndex: number) => void;
 }
 
 // Constants for habitable zone calculations
@@ -166,6 +168,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
   onStarFound, 
   onStarDoubleClick, 
   onPlanetClick,
+  onPlanetDoubleClick,
   sizeScale,
   isPaused,
   setIsPaused,
@@ -210,6 +213,12 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
   
   // Add state for tracking indicator
   const [showTrackingIndicator, setShowTrackingIndicator] = useState(false);
+
+  // Expose functions via ref
+  useImperativeHandle(ref, () => ({
+    focusOnStar,
+    focusOnPlanet
+  }));
 
   // Sync universeOffset state with ref for smoother animations
   useEffect(() => {
@@ -356,10 +365,6 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
       animate(time);
     });
   }, [camera, universeOffset, sizeScale]);
-
-  useImperativeHandle(ref, () => ({
-    focusOnStar
-  }), [focusOnStar]);
 
   // Handle search
   useEffect(() => {
@@ -857,24 +862,25 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
         <Star 
           key={system.hostname} 
           system={system} 
-              position={position}
+          position={position}
           scale={scale} 
-              isFar={isFar(system, position)}
+          isFar={isFar(system, position)}
           onClick={() => handleStarClick(system)}
           onDoubleClick={() => handleStarDoubleClick(system)}
           onPlanetClick={(sys, planetIndex) => onPlanetClick?.(sys, planetIndex)}
+          onPlanetDoubleClick={(sys, planetIndex) => onPlanetDoubleClick?.(sys, planetIndex)}
           registerPlanetAngle={registerPlanetAngle}
           isHighlighted={system === highlightedSystem}
           isPaused={isPaused}
-              sizeScale={sizeScale}
-              isFiltered={isFiltered}
-              colorByField={colorByField}
-              colorByValue={colorByValue}
-              activeFilters={activeFilters}
-              systemMaxScale={1000}
-              planetScaleRatio={100}
-              showHabitableZones={showHabitableZones}
-            />
+          sizeScale={sizeScale}
+          isFiltered={isFiltered}
+          colorByField={colorByField}
+          colorByValue={colorByValue}
+          activeFilters={activeFilters}
+          systemMaxScale={1000}
+          planetScaleRatio={100}
+          showHabitableZones={showHabitableZones}
+        />
           );
         });
 
@@ -1131,6 +1137,15 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
     setSelectedPlanet({ system, planetIndex });
   }, []);
 
+  const handlePlanetDoubleClick = useCallback((system: ExoplanetSystem, planetIndex: number) => {
+    // Focus on the planet instead of showing the info panel
+    if (sceneRef.current) {
+      sceneRef.current.focusOnPlanet(system, planetIndex);
+      // Clear any selected planet info panel
+      setSelectedPlanet(null);
+    }
+  }, []);
+
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
       <style>
@@ -1195,17 +1210,16 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
               setSelectedSystem(null);
               setSelectedPlanet(null);
               setLastSearchedSystem(null);
-              setIsPaused(false);
             }
           }}
           onPlanetClick={handlePlanetClick}
+          onPlanetDoubleClick={handlePlanetDoubleClick}
           searchQuery={searchQuery}
           onStarFound={(system) => {
             setCompactSystem(system);
             setSelectedSystem(null);
             setSelectedPlanet(null);
             setLastSearchedSystem(system.hostname);
-            setIsPaused(false);
           }}
           sizeScale={sizeScale}
           isPaused={isPaused}

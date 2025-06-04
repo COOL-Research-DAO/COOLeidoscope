@@ -14,6 +14,7 @@ interface PlanetsProps {
   systemMaxScale: number;
   planetScaleRatio: number;
   onPlanetClick?: (system: ExoplanetSystem, planetIndex: number) => void;
+  onPlanetDoubleClick?: (system: ExoplanetSystem, planetIndex: number) => void;
   registerPlanetAngle?: (systemName: string, planetIndex: number, angle: number, size?: number) => void;
 }
 
@@ -51,6 +52,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   const planetRefs = useRef<THREE.Group[]>([]);
   const planetTextRefs = useRef<THREE.Group[]>([]);
   const [hoveredPlanet, setHoveredPlanet] = useState<number | null>(null);
+  const [hoveredMoon, setHoveredMoon] = useState(false);
   
   // Track elapsed time and pause state
   const animationRef = useRef({
@@ -964,78 +966,19 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     });
   });
 
-  // Add a planet double-click handler
+  // Add a planet click handler
+  const handlePlanetClick = (index: number) => {
+    if (onPlanetClick) {
+      onPlanetClick(system, index);
+    }
+  };
+
+  // Add a planet double click handler
   const handlePlanetDoubleClick = (index: number) => {
     if (onPlanetDoubleClick) {
       onPlanetDoubleClick(system, index);
     }
   };
-
-  // Handle moon hover state
-  const [hoveredMoon, setHoveredMoon] = useState(false);
-
-  // Initialize planets when the system changes, even if animation is paused
-  useEffect(() => {
-    // Initialize positions for all planets
-    const initialPositions: THREE.Vector3[] = [];
-    let initialMoonPosition: THREE.Vector3 | null = null;
-    
-    system.planets.forEach((planet, index) => {
-      // Calculate initial position (angle = 0)
-      const position = calculateOrbitPosition(planet, index, currentAnglesRef.current[index] || 0);
-      
-      // Update planet refs if available
-      if (planetRefs.current[index]) {
-        planetRefs.current[index].position.x = position.x;
-        planetRefs.current[index].position.z = position.z;
-        planetRefs.current[index].position.y = 0;
-      }
-      
-      // Store position for labels
-      initialPositions[index] = new THREE.Vector3(
-        position.x,
-        0,
-        position.z
-      );
-      
-      // Initialize moon position for Earth
-      const isEarth = planet.pl_name?.toLowerCase().includes('earth');
-      if (isEarth && moonRef.current) {
-        const scaledOrbitRadius = getMoonOrbitRadius();
-        const moonAngle = moonAngleRef.current || 0;
-        
-        const moonLocalPosition = new THREE.Vector3(
-          scaledOrbitRadius * Math.cos(moonAngle),
-          0,
-          scaledOrbitRadius * Math.sin(moonAngle)
-        );
-        
-        // Set moon's position
-        moonRef.current.position.copy(moonLocalPosition);
-        
-        // Calculate absolute moon position
-        const earthPosition = new THREE.Vector3(position.x, 0, position.z);
-        initialMoonPosition = new THREE.Vector3(
-          earthPosition.x + moonLocalPosition.x,
-          earthPosition.y + moonLocalPosition.y,
-          earthPosition.z + moonLocalPosition.z
-        );
-      }
-    });
-
-    // Update positions state
-    setPlanetPositions(initialPositions);
-    if (initialMoonPosition) {
-      setMoonPosition(initialMoonPosition);
-    }
-  }, [system]);
-  
-
-  // Add a planet click handler
-  const handlePlanetClick = (index: number) => {
-    if (onPlanetClick) {
-      onPlanetClick(system, index);
-  }, [system]);    
       
   if (!visible) return null;
 
@@ -1066,6 +1009,10 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                 onClick={(e) => { 
                   e.stopPropagation(); 
                   handlePlanetClick(index); 
+                }}
+                onDoubleClick={(e) => { 
+                  e.stopPropagation(); 
+                  handlePlanetDoubleClick(index); 
                 }}
                 userData={{ type: 'planet', hostname: system.hostname, index }}
               >
