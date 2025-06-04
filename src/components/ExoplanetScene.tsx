@@ -57,11 +57,108 @@ interface SceneProps {
   activeFilters: FilterOption[];
   colorByField: string | null;
   systems: ExoplanetSystem[];
+  showHabitableZones?: boolean;
 }
 
 export interface SceneHandle {
   focusOnStar: (system: ExoplanetSystem) => void;
 }
+
+// Constants for habitable zone calculations
+const HZ_CONSTANTS = {
+  // Conservative habitable zone
+  conservative: {
+    inner: { S_eff: 1.1, a: 1.405e-4, b: 2.622e-8, c: 3.716e-12, d: -4.557e-16 },
+    outer: { S_eff: 0.356, a: 6.171e-5, b: 1.698e-9, c: -3.198e-12, d: -5.575e-16 }
+  },
+  // Optimistic habitable zone
+  optimistic: {
+    inner: { S_eff: 1.5, a: 2.486e-4, b: 5.263e-8, c: 1.019e-11, d: -1.337e-15 },
+    outer: { S_eff: 0.32, a: 5.547e-5, b: 1.527e-9, c: -2.874e-12, d: -5.011e-16 }
+  }
+};
+
+// Calculate habitable zone distances based on stellar parameters
+function calculateHabitableZone(teff: number, luminosity: number) {
+  // If we don't have temperature, use approximation
+  if (!teff) {
+    // Default values
+    return {
+      conservative: { inner: 0.95 * Math.sqrt(luminosity), outer: 1.67 * Math.sqrt(luminosity) },
+      optimistic: { inner: 0.75 * Math.sqrt(luminosity), outer: 1.77 * Math.sqrt(luminosity) }
+    };
+  }
+  
+  // Calculate scaled temperature difference from solar (5780K)
+  const tStar = teff - 5780;
+  
+  // Calculate effective stellar flux for each boundary
+  const calcSeff = (params: { S_eff: number, a: number, b: number, c: number, d: number }) => {
+    const { S_eff, a, b, c, d } = params;
+    return S_eff + a * tStar + b * tStar * tStar + c * Math.pow(tStar, 3) + d * Math.pow(tStar, 4);
+  };
+  
+  // Calculate distances
+  const conservativeInnerSeff = calcSeff(HZ_CONSTANTS.conservative.inner);
+  const conservativeOuterSeff = calcSeff(HZ_CONSTANTS.conservative.outer);
+  const optimisticInnerSeff = calcSeff(HZ_CONSTANTS.optimistic.inner);
+  const optimisticOuterSeff = calcSeff(HZ_CONSTANTS.optimistic.outer);
+  
+  return {
+    conservative: {
+      inner: Math.sqrt(luminosity / conservativeInnerSeff),
+      outer: Math.sqrt(luminosity / conservativeOuterSeff)
+    },
+    optimistic: {
+      inner: Math.sqrt(luminosity / optimisticInnerSeff),
+      outer: Math.sqrt(luminosity / optimisticOuterSeff)
+    }
+  };
+}
+
+// HabitableZone component to visualize the zone around a star
+interface HabitableZoneProps {
+  system: ExoplanetSystem;
+  visible: boolean;
+}
+
+const HabitableZone = memo(({ system, visible }: HabitableZoneProps) => {
+  if (!visible) return null;
+  
+  // Get star parameters
+  const teff = system.st_teff || 5780; // Default to solar temperature if not available
+  const luminosity = system.st_lum || 1.0; // Default to solar luminosity if not available
+  
+  // Calculate habitable zone
+  const hz = calculateHabitableZone(teff, luminosity);
+  
+  // Convert AU to parsecs (1 AU = 1/206265 parsecs)
+  const auToParsec = 1/206265;
+  
+  // Calculate optimistic habitable zone
+  const innerRadius = hz.optimistic.inner * auToParsec;
+  const outerRadius = hz.optimistic.outer * auToParsec;
+  
+  // Calculate conservative habitable zone 
+  const conservativeInner = hz.conservative.inner * auToParsec;
+  const conservativeOuter = hz.conservative.outer * auToParsec;
+  
+  return (
+    <group>
+      {/* Optimistic habitable zone (lighter color) */}
+      <mesh rotation={[Math.PI/2, 0, 0]}>
+        <torusGeometry args={[(innerRadius + outerRadius) / 2, (outerRadius - innerRadius) / 2, 2, 48]} />
+        <meshBasicMaterial color="#009900" transparent opacity={0.1} side={THREE.DoubleSide} />
+      </mesh>
+      
+      {/* Conservative habitable zone (darker color) */}
+      <mesh rotation={[Math.PI/2, 0, 0]}>
+        <torusGeometry args={[(conservativeInner + conservativeOuter) / 2, (conservativeOuter - conservativeInner) / 2, 2, 48]} />
+        <meshBasicMaterial color="#00aa00" transparent opacity={0.2} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+});
 
 const Scene = forwardRef<SceneHandle, SceneProps>(({ 
   onStarClick, 
@@ -75,6 +172,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
   activeFilters,
   colorByField,
   systems,
+  showHabitableZones = false,
 }, ref) => {
   
   const [scale, setScale] = useState(1);
@@ -775,19 +873,32 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
               activeFilters={activeFilters}
               systemMaxScale={1000}
               planetScaleRatio={100}
+              showHabitableZones={showHabitableZones}
             />
           );
         });
-      }, [visibleSystems, universeOffset, scale, highlightedSystem, isPaused, useUniverseOffset, sizeScale, activeFilters, colorByField, registerPlanetAngle, onPlanetClick])}
+
+      }, [visibleSystems, universeOffset, scale, highlightedSystem, isPaused, useUniverseOffset, sizeScale, activeFilters, colorByField, registerPlanetAngle, onPlanetClick, showHabitableZones])}
+
       <OrbitControls
         ref={controlsRef}
-        enableDamping
-        dampingFactor={0.05}
-        rotateSpeed={0.3}
-        panSpeed={1.0}
-        zoomSpeed={1.0}
+        enableDamping={false}
+        dampingFactor={0.01}
+        rotateSpeed={0.4}
+        panSpeed={1.5}
+        zoomSpeed={5.0}
         minDistance={Math.max(focusedObjectRadius * (1.1 / (1000 / sizeScale)), 0.0001/206265)}
-        onUpdate={(self) => {
+        maxDistance={10000}
+        screenSpacePanning={true}
+        target={[0, 0, 0]}
+        maxPolarAngle={Math.PI / 2}
+        mouseButtons={{
+          LEFT: THREE.MOUSE.PAN,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.ROTATE
+        }}
+        makeDefault
+        onUpdate={(self: any) => {
           // If we're too close, force the camera back to minimum distance
           const distance = camera.position.length();
           const minDist = Math.max(focusedObjectRadius * (1.1 / (1000 / sizeScale)), 0.0001/206265);
@@ -796,15 +907,6 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
             camera.position.copy(direction.multiplyScalar(minDist));
             self.target.set(0, 0, 0);
           }
-        }}
-        maxDistance={10000} // 10000 parsecs 
-        screenSpacePanning={true}
-        target={[0, 0, 0]}
-        maxPolarAngle={Math.PI / 2}
-        mouseButtons={{
-          LEFT: THREE.MOUSE.PAN,
-          MIDDLE: THREE.MOUSE.DOLLY,
-          RIGHT: THREE.MOUSE.ROTATE
         }}
       />
     </>
@@ -823,10 +925,111 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
   const sceneRef = useRef<SceneHandle>(null);
   const [lastSearchedSystem, setLastSearchedSystem] = useState<string | null>(null);
   const [sizeScale, setSizeScale] = useState(1);
+  const sizeSliderRef = useRef<HTMLInputElement>(null);
+  const currentValueRef = useRef(1);
   const [isPaused, setIsPaused] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<FilterOption[]>([]);
   const [colorByField, setColorByField] = useState<string | null>(null);
+  const [showHabitableZones, setShowHabitableZones] = useState(false);
+
+  // Simple change handler for non-drag updates
+  const handleSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = Math.max(1, Number(e.target.value));
+    currentValueRef.current = newValue;
+    setSizeScale(newValue);
+  };
+
+  // IMPORTANT: Set up the direct DOM manipulation for the slider
+  useEffect(() => {
+    const slider = sizeSliderRef.current;
+    if (!slider) return;
+
+    let isDragging = false;
+    let rafId: number | null = null;
+    
+    const startDrag = () => {
+      isDragging = true;
+      // Set will-change for better performance
+      slider.style.willChange = 'value';
+    };
+    
+    const endDrag = () => {
+      if (isDragging) {
+        isDragging = false;
+        // Remove will-change
+        slider.style.willChange = 'auto';
+        // Ensure final state update
+        setSizeScale(currentValueRef.current);
+      }
+      
+      // Cancel any pending animation frame
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    };
+    
+    const onMove = (clientX: number) => {
+      if (!isDragging || !slider) return;
+      
+      // Cancel any previous animation frame
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      
+      // Schedule update on next animation frame
+      rafId = requestAnimationFrame(() => {
+        const rect = slider.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        const value = Math.round(1 + ratio * 999); // min=1, max=1000
+        
+        // Update DOM value immediately
+        slider.value = String(value);
+        currentValueRef.current = value;
+        
+        // Update React state during drag for immediate feedback
+        setSizeScale(value);
+      });
+    };
+    
+    // Mouse events
+    const onMouseDown = () => startDrag();
+    const onMouseMove = (e: MouseEvent) => onMove(e.clientX);
+    const onMouseUp = () => endDrag();
+    
+    // Touch events for mobile
+    const onTouchStart = () => startDrag();
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches[0]) onMove(e.touches[0].clientX);
+    };
+    const onTouchEnd = () => endDrag();
+    
+    // Attach all event listeners
+    slider.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    
+    slider.addEventListener('touchstart', onTouchStart);
+    window.addEventListener('touchmove', onTouchMove);
+    window.addEventListener('touchend', onTouchEnd);
+    
+    return () => {
+      // Clean up all event listeners
+      slider.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      
+      slider.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      
+      // Cancel any pending animation frame
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     console.log('Loading exoplanet data...');
@@ -1010,6 +1213,7 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           activeFilters={activeFilters}
           colorByField={colorByField}
           systems={systems}
+          showHabitableZones={showHabitableZones}
         />
         <ScaleBarUpdater />
       </Canvas>
@@ -1033,12 +1237,13 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       >
         <span style={{ fontSize: '0.8em' }}>Real size</span>
         <input
+          ref={sizeSliderRef}
           type="range"
           min="1"
           max="1000"
           step="1"
-          value={Math.max(1, sizeScale)}
-          onChange={(e) => setSizeScale(Math.max(1, Number(e.target.value)))}
+          defaultValue={String(sizeScale)}
+          onChange={handleSizeChange}
           onKeyDown={(e) => {
             if (e.code === 'Space') {
               e.preventDefault();
@@ -1046,7 +1251,10 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
               setIsPaused(prev => !prev);
             }
           }}
-          style={{ flex: 1 }}
+          style={{ 
+            flex: 1,
+            cursor: 'pointer'
+          }}
         />
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: '0.8em' }}>Enlarged</span>
@@ -1187,9 +1395,9 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       )}
       <div style={{
         position: 'fixed',
-        bottom: '1rem',
+        bottom: '3rem', // Move compact info panel higher
         left: '1rem',
-        zIndex: 1000,
+        zIndex: 999,
         maxWidth: '300px',
         backgroundColor: 'rgba(0, 0, 0, 0.8)',
         borderRadius: '8px',
@@ -1201,6 +1409,27 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           compact={true}
         />
       </div>
+      {/* Habitable zone toggle button */}
+      <button
+        onClick={() => setShowHabitableZones(!showHabitableZones)}
+        style={{
+          position: 'fixed',
+          bottom: '1.9rem',
+          left: '1.9rem',
+          padding: '8px',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          border: '1px solid #666',
+          borderRadius: '4px',
+          color: 'white',
+          cursor: 'pointer',
+          zIndex: 999,
+          marginBottom: 0, // Remove margin since we moved the panel up
+        }}
+      >
+        {showHabitableZones ? 'Hide Habitable Zone' : 'Show Habitable Zone'}
+      </button>
+      
+      {/* Filter button */}
       <button
         onClick={() => setIsFilterPanelOpen(true)}
         style={{
@@ -1218,6 +1447,7 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       >
         <FaFilter />
       </button>
+      
       <FilterPanel
         systems={systems}
         onFiltersChange={setActiveFilters}
