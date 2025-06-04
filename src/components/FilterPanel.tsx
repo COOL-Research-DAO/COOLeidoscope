@@ -564,7 +564,7 @@ export const FilterPanel = React.memo(function FilterPanel({ systems, onFiltersC
 
     const initialFilters: FilterOption[] = [
       {
-        label: 'Hosts potentially habitable planet(s)',
+        label: 'Star with potentially habitable planet(s)',
         field: 'hasHabitablePlanet',
         type: 'boolean',
         selected: false

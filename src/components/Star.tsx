@@ -269,7 +269,10 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
   // Calculate color (used for point light and fallback)
   const color = useMemo(() => {
     if (!colorByField) {
-      return new THREE.Color(0xffff4f); // Default bright yellow when no filter
+      // Default color is now slightly greenish for non-filtered stars (habitable planets)
+      return props.isFiltered ? 
+        new THREE.Color(0xffcc00) : // More vibrant golden yellow for filtered stars
+        new THREE.Color(0xffee00);  // Bright yellow for stars with habitable planets (non-filtered)
     }
     
     // Return white for null or NaN values when filter is applied
@@ -286,7 +289,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
     }
 
     return getViridisColor(colorByValue, range?.min || 0, range?.max || 1, true);
-  }, [colorByField, colorByValue, props.activeFilters, system.planets.length]);
+  }, [colorByField, colorByValue, props.activeFilters, system.planets.length, props.isFiltered]);
 
   // Handle star rotation - only at extremely close distances
   useFrame((state, delta) => {
@@ -341,8 +344,8 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
   const pointLightElement = showImage && (
     <pointLight
       color={color}
-      intensity={2}
-      distance={50}
+      intensity={props.isFiltered ? 2 : 3} // Increase intensity for non-filtered stars
+      distance={props.isFiltered ? 50 : 70} // Increase light distance for non-filtered stars
       decay={2}
     />
   );
@@ -374,7 +377,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
             <meshBasicMaterial
               color={color}
               transparent={props.isFiltered}
-              opacity={props.isFiltered ? 0.1 : 1}
+              opacity={props.isFiltered ? 0.12 : 1} // Moderate value between 0.05 and 0.2
             />
           </mesh>
         }>
@@ -392,9 +395,9 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
             <sphereGeometry args={[1, 64, 64]} /> {/* Higher resolution geometry */}
             <meshBasicMaterial
               map={starTexture || globalStarTexture}
-              color={new THREE.Color(0xFFFFFF).multiplyScalar(props.isFiltered ? 0.55 : 2.5)} /* Adjust brightness based on filter */
+              color={new THREE.Color(0xFFFFFF).multiplyScalar(props.isFiltered ? 0.45 : 3.0)} /* Moderate value between 0.35 and 0.6 */
               transparent={props.isFiltered}
-              opacity={props.isFiltered ? 0.1 : 1}
+              opacity={props.isFiltered ? 0.12 : 1} /* Moderate value between 0.05 and 0.2 */
               side={THREE.DoubleSide}
               alphaTest={0.1} /* Prevent z-fighting */
               depthWrite={true} /* Ensure proper depth sorting */
@@ -405,12 +408,12 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
           {/* Gradient glow effect for textured stars */}
           <Billboard renderOrder={2}>
             {/* Outer halo */}
-            <mesh scale={[starRadius * 5.0, starRadius * 5.0, 1]} renderOrder={2}>
+            <mesh scale={[starRadius * (props.isFiltered ? 5.0 : 7.0), starRadius * (props.isFiltered ? 5.0 : 7.0), 1]} renderOrder={2}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
                 transparent={true}
-                opacity={props.isFiltered ? 0.09 : 1.5}
+                opacity={props.isFiltered ? 0.1 : 1.8} /* Moderate value between 0.05 and 0.15 */
                 depthWrite={false}
                 depthTest={false}
                 side={THREE.DoubleSide}
@@ -420,12 +423,12 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
               />
             </mesh>
             {/* Inner halo */}
-            <mesh scale={[starRadius * 2.4, starRadius * 2.4, 1]} renderOrder={3}>
+            <mesh scale={[starRadius * (props.isFiltered ? 2.4 : 3.5), starRadius * (props.isFiltered ? 2.4 : 3.5), 1]} renderOrder={3}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
                 transparent={true}
-                opacity={props.isFiltered ? 0.09 : 3.0}
+                opacity={props.isFiltered ? 0.1 : 3.5} /* Moderate value between 0.05 and 0.15 */
                 depthWrite={false}
                 depthTest={false}
                 side={THREE.DoubleSide}
@@ -453,22 +456,22 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
           >
             <sphereGeometry args={[1, 16, 16]} />
             <meshBasicMaterial
-              color={color.clone().multiplyScalar(props.isFiltered ? 0.1 : 1)}
+              color={color.clone().multiplyScalar(props.isFiltered ? 0.15 : 1.2)} /* Moderate value between 0.05 and 0.25 */
               transparent={props.isFiltered}
-              opacity={props.isFiltered ? 0.1 : 1}
+              opacity={props.isFiltered ? 0.12 : 1} /* Moderate value between 0.05 and 0.2 */
               depthWrite={!props.isFiltered}
             />
           </mesh>
           
           {/* Gradient glow effect */}
           <Billboard renderOrder={2}>
-            {/* Outer halo */}
-            <mesh scale={[haloRadius * 16.0, haloRadius * 16.0, 1]} renderOrder={2}>
+            {/* Outer halo - larger for non-filtered stars */}
+            <mesh scale={[haloRadius * (props.isFiltered ? 12.0 : 20.0), haloRadius * (props.isFiltered ? 12.0 : 20.0), 1]} renderOrder={2}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
                 transparent={true}
-                opacity={props.isFiltered ? 0.09 : 0.3}
+                opacity={props.isFiltered ? 0.06 : 0.45} /* Moderate value between 0.03 and 0.1 */
                 depthWrite={false}
                 depthTest={false}
                 side={THREE.DoubleSide}
@@ -477,13 +480,13 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
                 blending={THREE.AdditiveBlending}
               />
             </mesh>
-            {/* Inner halo */}
-            <mesh scale={[haloRadius * 4.0, haloRadius * 4.0, 1]} renderOrder={3}>
+            {/* Inner halo - larger for non-filtered stars */}
+            <mesh scale={[haloRadius * (props.isFiltered ? 3.0 : 6.0), haloRadius * (props.isFiltered ? 3.0 : 6.0), 1]} renderOrder={3}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
                 transparent={true}
-                opacity={props.isFiltered ? 0.09 : 0.5}
+                opacity={props.isFiltered ? 0.06 : 0.7} /* Moderate value between 0.03 and 0.1 */
                 depthWrite={false}
                 depthTest={false}
                 side={THREE.DoubleSide}

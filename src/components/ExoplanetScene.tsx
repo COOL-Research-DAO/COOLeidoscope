@@ -927,6 +927,7 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<ExoplanetSystem[]>([]);
   const [systems, setSystems] = useState<ExoplanetSystem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sceneRef = useRef<SceneHandle>(null);
   const [lastSearchedSystem, setLastSearchedSystem] = useState<string | null>(null);
@@ -1039,9 +1040,14 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
 
   useEffect(() => {
     console.log('Loading exoplanet data...');
+    setIsLoading(true);
     loadExoplanetData().then(data => {
       console.log('Loaded systems:', data.length);
       setSystems(data);
+      // Add a delay before hiding the loading message to ensure stars have time to render
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 1500); // 2 second delay
     });
   }, []);
 
@@ -1232,6 +1238,26 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
         <ScaleBarUpdater />
       </Canvas>
       <ScaleBar />
+      
+      {/* Loading message */}
+      {isLoading && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          padding: '1rem',
+          borderRadius: '8px',
+          color: 'white',
+          zIndex: 1000,
+          fontFamily: 'Arial, sans-serif',
+          fontSize: '1.5rem',
+          textAlign: 'center'
+        }}>
+          Loading COOLeidoscope...
+        </div>
+      )}
       
       {/* Size scale slider */}
       <div 
