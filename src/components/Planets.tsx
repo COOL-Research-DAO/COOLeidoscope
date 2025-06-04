@@ -349,7 +349,16 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   // Determine which planets should show detailed textures
   useEffect(() => {
     // Calculate distance to each planet and determine if it should show texture
-    const detailedThreshold = 0.003; // parsecs, adjust as needed
+    const detailedThreshold = 0.00003; // parsecs, smaller value to only load textures for very nearby planets
+    
+    // Don't recalculate on every tiny camera movement
+    if (lastCameraDistanceRef.current !== null && 
+        Math.abs(distanceToCamera - lastCameraDistanceRef.current) < 0.001) {
+      return; // Skip this update if camera hasn't moved significantly
+    }
+    
+    // Update the last distance
+    lastCameraDistanceRef.current = distanceToCamera;
     
     // Create a new array using forEach with index
     const newDetailedState = [...system.planets].map((planet, index) => {
@@ -487,7 +496,11 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   useEffect(() => {
     // Skip all texture loading if no planets are detailed
     if (!detailedPlanets.some(isDetailed => isDetailed)) {
-      console.log("No planets are close enough for detailed textures");
+      // Only log once when transitioning from having detailed planets to having none
+      if (textureCache.size > 0) {
+        console.log("No planets are close enough for detailed textures");
+      }
+      
       // Reset all textures
       system.planets.forEach((_, index) => {
         if (planetShaders.current[index]) {
@@ -498,20 +511,51 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       return;
     }
 
-    console.log("Detailed planets indices:", detailedPlanets
-      .map((isDetailed, index) => isDetailed ? index : -1)
-      .filter(index => index !== -1));
-
-    // Cleanup function to track which textures are still needed
-    const neededTextures = new Set<string>();
-    
-    // Only process planets that are marked as detailed
+    // Get the visible detailed planets
     const detailedPlanetIndices = detailedPlanets
       .map((isDetailed, index) => isDetailed ? index : -1)
       .filter(index => index !== -1);
 
-    // Load textures only for detailed planets
-    detailedPlanetIndices.forEach(index => {
+    console.log("Detailed planets indices:", detailedPlanetIndices);
+
+    // Only load textures for currently visible planets (in viewport)
+    // Check if planet is within camera's view frustum
+    const frustum = new THREE.Frustum();
+    const matrix = new THREE.Matrix4().multiplyMatrices(
+      camera.projectionMatrix,
+      camera.matrixWorldInverse
+    );
+    frustum.setFromProjectionMatrix(matrix);
+
+    // Filter to only include planets that are both detailed AND visible in the frustum
+    const visibleDetailedPlanetIndices = detailedPlanetIndices.filter(index => {
+      const planetGroup = planetRefs.current[index];
+      if (!planetGroup) return false;
+      
+      // Create bounding sphere for frustum check
+      const planetPos = new THREE.Vector3().copy(planetGroup.position);
+      const boundingSphere = new THREE.Sphere(planetPos, 0.005); // Small sphere for the planet
+      
+      // Check if planet is visible in the frustum
+      const isVisible = frustum.intersectsSphere(boundingSphere);
+      
+      const planet = system.planets[index];
+      if (isVisible) {
+        console.log(`Planet ${planet.pl_name} is visible in the viewport`);
+      } else {
+        console.log(`Planet ${planet.pl_name} is detailed but not visible in the viewport - skipping texture loading`);
+      }
+      
+      return isVisible;
+    });
+
+    console.log("Visible detailed planets indices:", visibleDetailedPlanetIndices);
+
+    // Cleanup function to track which textures are still needed
+    const neededTextures = new Set<string>();
+    
+    // Load textures only for visible detailed planets
+    visibleDetailedPlanetIndices.forEach(index => {
       const planet = system.planets[index];
       const planetName = planet.pl_name.toLowerCase().replace(/[^a-z0-9-]/g, '');
       if (!planetName) {
@@ -667,12 +711,15 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
 
   // Add this new useEffect to force texture reinitialization when detailed planets change
   useEffect(() => {
-    // When detailed planets change, force reapplication of textures
-    console.log("Detailed planets changed, forcing texture refresh");
+    // Only log when detailed planets actually change in a meaningful way
+    const detailedCount = detailedPlanets.filter(isDetailed => isDetailed).length;
+    
+    if (detailedCount > 0) {
+      console.log(`Detailed planets changed: ${detailedCount} planets now showing detailed textures`);
+    }
     
     // We don't need to do anything here since the main texture loading mechanism
     // in the previous useEffect already handles texture loading when detailedPlanets changes.
-    // Removing the redundant texture loading code to prevent race conditions.
   }, [detailedPlanets]); // Only run when detailedPlanets changes
 
   // Calculate relative sizes based on radius or mass
