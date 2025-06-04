@@ -5,6 +5,42 @@ import { Text } from '@react-three/drei';
 import { ExoplanetSystem } from '../types/Exoplanet';
 import { PlanetLabel } from './PlanetLabel';
 
+// Always use GitHub repository for textures
+const BASE_PATH = 'https://raw.githubusercontent.com/COOL-Research-DAO/Database/main';
+
+// Texture path mapping
+const TEXTURE_PATHS = {
+  moon: `${BASE_PATH}/images/2k_moon.jpg`,
+  saturnRing: `${BASE_PATH}/images/2k_saturn_ring_alpha.png`,
+  terrestrialTextures: {
+    'Terrestrial1.png': `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Terrestrial1.png`,
+    'Alpine.png': `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Alpine.png`,
+    'Savannah.png': `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Savannah.png`,
+    'Swamp.png': `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Swamp.png`,
+    'Volcanic.png': `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Volcanic.png`,
+    'Venusian.png': `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Venusian.png`,
+    'Martian.png': `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Martian.png`,
+    'Icy.png': `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Icy.png`,
+    'Tropical.png': `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Tropical.png`
+  } as Record<string, string>,
+  gasGiantTextures: {
+    'Gaseous1.png': `${BASE_PATH}/images/TexturesForPlanets-GasGiant/Gaseous1.png`,
+    'Gaseous2.png': `${BASE_PATH}/images/TexturesForPlanets-GasGiant/Gaseous2.png`,
+    'Gaseous3.png': `${BASE_PATH}/images/TexturesForPlanets-GasGiant/Gaseous3.png`,
+    'Gaseous4.png': `${BASE_PATH}/images/TexturesForPlanets-GasGiant/Gaseous4.png`
+  } as Record<string, string>
+};
+
+// Helper to get planet texture URL
+const getPlanetTexturePath = (name: string): string[] => {
+  return [
+    `${BASE_PATH}/images/2k_${name}.jpg`,
+    `${BASE_PATH}/images/2k_${name}.png`,
+    `${BASE_PATH}/images/${name}.jpg`,
+    `${BASE_PATH}/images/${name}.png`
+  ];
+};
+
 interface PlanetsProps {
   system: ExoplanetSystem;
   visible: boolean;
@@ -112,9 +148,9 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     const randomIndex = Math.floor(Math.random() * textureArray.length);
     const randomTexture = textureArray[randomIndex];
     
-    // Build the full path
-    const folder = isGasGiant ? 'TexturesForPlanets-GasGiant' : 'TexturesForPlanets-Terrestrial';
-    const texturePath = `/images/${folder}/${randomTexture}`;
+    // Get the full path from texture mapping
+    const textures = isGasGiant ? TEXTURE_PATHS.gasGiantTextures : TEXTURE_PATHS.terrestrialTextures;
+    const texturePath = textures[randomTexture];
     
     // Store the assignment for consistency
     randomTextureAssignments.set(planetIndex, texturePath);
@@ -279,7 +315,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     // Load moon texture regardless of distance
     const textureLoader = new THREE.TextureLoader();
     textureLoader.load(
-      '/images/2k_moon.jpg',
+      TEXTURE_PATHS.moon,
       (texture) => {
         texture.flipY = true;
         setMoonTexture(texture);
@@ -296,7 +332,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     
     // Load Saturn ring texture
     textureLoader.load(
-      '/images/2k_saturn_ring_alpha.png',
+      TEXTURE_PATHS.saturnRing,
       (texture) => {
         texture.flipY = true;
         saturnRingMaterial.uniforms.ringTexture.value = texture;
@@ -504,12 +540,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       }
       
       // Try named planet textures first
-      const namedTexturePaths = [
-        `/images/2k_${planetName}.jpg`,
-        `/images/2k_${planetName}.png`,
-        `/images/${planetName}.jpg`,
-        `/images/${planetName}.png`
-      ];
+      const namedTexturePaths = getPlanetTexturePath(planetName);
       
       console.log(`Attempting to load texture for ${planetName} - planet is within detailed threshold`);
       

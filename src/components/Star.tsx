@@ -149,6 +149,84 @@ const HabitableZone = memo(({ system, visible }: HabitableZoneProps) => {
 let globalStarTexture: THREE.Texture | null = null;
 let isLoadingGlobalTexture = false;
 
+// Always use GitHub repository for textures
+const BASE_PATH = 'https://raw.githubusercontent.com/COOL-Research-DAO/Database/main';
+
+// Texture path mapping
+const TEXTURE_PATHS = {
+  sun: `${BASE_PATH}/images/2k_sun.jpg`,
+  moon: `${BASE_PATH}/images/2k_moon.jpg`,
+  saturnRing: `${BASE_PATH}/images/2k_saturn_ring_alpha.png`,
+  // Planet textures - terrestrial
+  terrestrial1: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Terrestrial1.png`,
+  alpine: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Alpine.png`,
+  savannah: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Savannah.png`,
+  swamp: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Swamp.png`,
+  volcanic: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Volcanic.png`,
+  venusian: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Venusian.png`,
+  martian: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Martian.png`,
+  icy: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Icy.png`,
+  tropical: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Tropical.png`,
+  // Planet textures - gas giants
+  gaseous1: `${BASE_PATH}/images/TexturesForPlanets-GasGiant/Gaseous1.png`,
+  gaseous2: `${BASE_PATH}/images/TexturesForPlanets-GasGiant/Gaseous2.png`,
+  gaseous3: `${BASE_PATH}/images/TexturesForPlanets-GasGiant/Gaseous3.png`,
+  gaseous4: `${BASE_PATH}/images/TexturesForPlanets-GasGiant/Gaseous4.png`,
+  // Named planets
+  mercury: `${BASE_PATH}/images/2k_mercury.jpg`,
+  venus: `${BASE_PATH}/images/2k_venus_atmosphere.jpg`,
+  earth: `${BASE_PATH}/images/2k_earth_daymap.jpg`,
+  mars: `${BASE_PATH}/images/2k_mars.jpg`,
+  jupiter: `${BASE_PATH}/images/2k_jupiter.jpg`,
+  saturn: `${BASE_PATH}/images/2k_saturn.jpg`,
+  uranus: `${BASE_PATH}/images/2k_uranus.jpg`,
+  neptune: `${BASE_PATH}/images/2k_neptune.jpg`,
+};
+
+// Helper function to get texture URL for a planet
+const getPlanetTextureUrl = (planetName: string): string => {
+  const normalizedName = planetName.toLowerCase().replace(/[^a-z0-9-]/g, '');
+  
+  // Check if we have a specific texture for this planet
+  if (normalizedName.includes('mercury')) return TEXTURE_PATHS.mercury;
+  if (normalizedName.includes('venus')) return TEXTURE_PATHS.venus;
+  if (normalizedName.includes('earth')) return TEXTURE_PATHS.earth;
+  if (normalizedName.includes('mars')) return TEXTURE_PATHS.mars;
+  if (normalizedName.includes('jupiter')) return TEXTURE_PATHS.jupiter;
+  if (normalizedName.includes('saturn')) return TEXTURE_PATHS.saturn;
+  if (normalizedName.includes('uranus')) return TEXTURE_PATHS.uranus;
+  if (normalizedName.includes('neptune')) return TEXTURE_PATHS.neptune;
+  
+  // Return null if no match found
+  return '';
+};
+
+// Helper function to get a random texture path based on planet type
+const getRandomTexturePath = (isGasGiant: boolean): string => {
+  if (isGasGiant) {
+    const gasGiantTextures = [
+      TEXTURE_PATHS.gaseous1,
+      TEXTURE_PATHS.gaseous2,
+      TEXTURE_PATHS.gaseous3,
+      TEXTURE_PATHS.gaseous4
+    ];
+    return gasGiantTextures[Math.floor(Math.random() * gasGiantTextures.length)];
+  } else {
+    const terrestrialTextures = [
+      TEXTURE_PATHS.terrestrial1,
+      TEXTURE_PATHS.alpine,
+      TEXTURE_PATHS.savannah,
+      TEXTURE_PATHS.swamp,
+      TEXTURE_PATHS.volcanic,
+      TEXTURE_PATHS.venusian,
+      TEXTURE_PATHS.martian,
+      TEXTURE_PATHS.icy,
+      TEXTURE_PATHS.tropical
+    ];
+    return terrestrialTextures[Math.floor(Math.random() * terrestrialTextures.length)];
+  }
+};
+
 // Create a radial gradient texture for the glow
 const glowTexture = (() => {
   const canvas = document.createElement('canvas');
@@ -315,7 +393,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
       
       const textureLoader = new THREE.TextureLoader();
       textureLoader.load(
-        '/images/2k_sun.jpg',
+        TEXTURE_PATHS.sun,
         (texture) => {
           texture.flipY = false;
           texture.wrapS = THREE.RepeatWrapping;
