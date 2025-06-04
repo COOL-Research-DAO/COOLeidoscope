@@ -16,6 +16,7 @@ import { FilterPanel, systemMatchesFilters } from './FilterPanel';
 import { FaFilter } from 'react-icons/fa';
 import Star from './Star';
 import { ScaleBar, ScaleBarUpdater } from './ScaleBar';
+import { PlanetInfoModal } from './PlanetInfoModal';
 
 /**
  * Three.js Coordinate System:
@@ -49,6 +50,7 @@ interface SceneProps {
   searchQuery: string;
   onStarFound?: (system: ExoplanetSystem) => void;
   onStarDoubleClick?: (system: ExoplanetSystem) => void;
+  onPlanetClick?: (system: ExoplanetSystem, planetIndex: number) => void;
   sizeScale: number;
   isPaused: boolean;
   setIsPaused: React.Dispatch<React.SetStateAction<boolean>>;
@@ -163,6 +165,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
   searchQuery, 
   onStarFound, 
   onStarDoubleClick, 
+  onPlanetClick,
   sizeScale,
   isPaused,
   setIsPaused,
@@ -586,14 +589,6 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
     }
   }, [camera, universeOffset, sizeScale]);
 
-  // Add planet double-click handler
-  const handlePlanetDoubleClick = (system: ExoplanetSystem, planetIndex: number) => {
-    focusOnPlanet(system, planetIndex);
-    // Set compactSystem to display the system in compact mode
-    setCompactSystem(system);
-    setSelectedSystem(null);
-  };
-  
   // Add event listeners for orbit controls
   useEffect(() => {
     const handleControlStart = () => {
@@ -867,7 +862,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
               isFar={isFar(system, position)}
           onClick={() => handleStarClick(system)}
           onDoubleClick={() => handleStarDoubleClick(system)}
-          onPlanetDoubleClick={(sys, planetIndex) => handlePlanetDoubleClick(sys, planetIndex)}
+          onPlanetClick={(sys, planetIndex) => onPlanetClick?.(sys, planetIndex)}
           registerPlanetAngle={registerPlanetAngle}
           isHighlighted={system === highlightedSystem}
           isPaused={isPaused}
@@ -882,7 +877,9 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
             />
           );
         });
-      }, [visibleSystems, universeOffset, scale, highlightedSystem, isPaused, useUniverseOffset, sizeScale, activeFilters, colorByField, registerPlanetAngle, showHabitableZones])}
+
+      }, [visibleSystems, universeOffset, scale, highlightedSystem, isPaused, useUniverseOffset, sizeScale, activeFilters, colorByField, registerPlanetAngle, onPlanetClick, showHabitableZones])}
+
       <OrbitControls
         ref={controlsRef}
         enableDamping={false}
@@ -918,6 +915,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
 
 function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
   const [selectedSystem, setSelectedSystem] = useState<ExoplanetSystem | null>(null);
+  const [selectedPlanet, setSelectedPlanet] = useState<{system: ExoplanetSystem, planetIndex: number} | null>(null);
   const [compactSystem, setCompactSystem] = useState<ExoplanetSystem | null>(null);
   const [showHelp, setShowHelp] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1119,6 +1117,7 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
         
         setCompactSystem(foundSystem);
         setSelectedSystem(null);
+        setSelectedPlanet(null);
         setLastSearchedSystem(foundSystem.hostname);
         
         // Clear search after successful search
@@ -1127,6 +1126,10 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       }
     }
   };
+
+  const handlePlanetClick = useCallback((system: ExoplanetSystem, planetIndex: number) => {
+    setSelectedPlanet({ system, planetIndex });
+  }, []);
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
@@ -1184,19 +1187,23 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           onStarClick={(system) => {
             setSelectedSystem(system);
             setCompactSystem(null);
+            setSelectedPlanet(null);
           }}
           onStarDoubleClick={(system) => {
             if (system.hostname !== lastSearchedSystem) {
               setCompactSystem(system);
               setSelectedSystem(null);
+              setSelectedPlanet(null);
               setLastSearchedSystem(null);
               setIsPaused(false);
             }
           }}
+          onPlanetClick={handlePlanetClick}
           searchQuery={searchQuery}
           onStarFound={(system) => {
             setCompactSystem(system);
             setSelectedSystem(null);
+            setSelectedPlanet(null);
             setLastSearchedSystem(system.hostname);
             setIsPaused(false);
           }}
@@ -1298,6 +1305,7 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
                     setSearchQuery('');
                     setCompactSystem(system);
                     setSelectedSystem(null);
+                    setSelectedPlanet(null);
                     setSuggestions([]);
                     setLastSearchedSystem(system.hostname);
                   }}
@@ -1336,6 +1344,7 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
             <li>Right-click + drag to rotate</li>
             <li>Scroll to zoom</li>
             <li>Click on stars to see detailed info</li>
+            <li>Click on planets to see detailed info</li>
             <li>Double-click on stars to focus and see quick info</li>
             <li>Space bar to pause/resume planet motion</li>
             <li>Use search bar to find stars</li>
@@ -1368,6 +1377,19 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
             system={selectedSystem} 
             onClose={() => setSelectedSystem(null)} 
             compact={false}
+          />
+        </div>
+      )}
+      {selectedPlanet && (
+        <div style={{
+          position: 'fixed',
+          bottom: '1rem',
+          right: '1rem',
+          zIndex: 1000,
+        }}>
+          <PlanetInfoModal 
+            planet={selectedPlanet.system.planets[selectedPlanet.planetIndex]}
+            onClose={() => setSelectedPlanet(null)}
           />
         </div>
       )}

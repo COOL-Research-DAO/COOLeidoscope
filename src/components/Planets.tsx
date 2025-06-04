@@ -13,7 +13,7 @@ interface PlanetsProps {
   sizeScale: number;
   systemMaxScale: number;
   planetScaleRatio: number;
-  onPlanetDoubleClick?: (system: ExoplanetSystem, planetIndex: number) => void;
+  onPlanetClick?: (system: ExoplanetSystem, planetIndex: number) => void;
   registerPlanetAngle?: (systemName: string, planetIndex: number, angle: number, size?: number) => void;
 }
 
@@ -25,6 +25,7 @@ interface TextureCache {
   };
 }
 
+
 // List of available random textures
 const TERRESTRIAL_TEXTURES = [
   'Terrestrial1.png', 'Alpine.png', 'Savannah.png', 'Swamp.png', 
@@ -35,7 +36,8 @@ const GAS_GIANT_TEXTURES = [
   'Gaseous1.png', 'Gaseous2.png', 'Gaseous3.png', 'Gaseous4.png'
 ];
 
-export function Planets({ system, visible, isPaused, starRadius, sizeScale, systemMaxScale, planetScaleRatio, onPlanetDoubleClick, registerPlanetAngle }: PlanetsProps) {
+export function Planets({ system, visible, isPaused, starRadius, sizeScale, systemMaxScale, planetScaleRatio, onPlanetDoubleClick, onPlanetClick, registerPlanetAngle }: PlanetsProps) {
+
   const orbitSegments = 64;
   const orbitScaleFactor = 1 / 206265; // Convert AU to parsecs
   const { camera } = useThree();
@@ -1020,14 +1022,21 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
         );
       }
     });
-    
+
     // Update positions state
     setPlanetPositions(initialPositions);
     if (initialMoonPosition) {
       setMoonPosition(initialMoonPosition);
     }
   }, [system]);
+  
 
+  // Add a planet click handler
+  const handlePlanetClick = (index: number) => {
+    if (onPlanetClick) {
+      onPlanetClick(system, index);
+  }, [system]);    
+      
   if (!visible) return null;
 
   return (
@@ -1054,10 +1063,9 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
               <mesh
                 onPointerOver={() => setHoveredPlanet(index)}
                 onPointerOut={() => setHoveredPlanet(null)}
-                onClick={(e) => { e.stopPropagation(); }} 
-                onDoubleClick={(e) => { 
+                onClick={(e) => { 
                   e.stopPropagation(); 
-                  handlePlanetDoubleClick(index); 
+                  handlePlanetClick(index); 
                 }}
                 userData={{ type: 'planet', hostname: system.hostname, index }}
               >
@@ -1098,8 +1106,8 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                       onDoubleClick={(e) => { 
                         e.stopPropagation(); 
                         // Special case for the moon
-                        if (isEarth && onPlanetDoubleClick) {
-                          onPlanetDoubleClick(system, -1); // Use -1 to indicate the moon
+                        if (isEarth && onPlanetClick) {
+                          onPlanetClick(system, -1); // Use -1 to indicate the moon
                         }
                       }}
                     >
