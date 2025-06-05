@@ -107,7 +107,6 @@ type ExpandedCategory =
   | 'publications'
   | 'observational_data'
   | 'public_engagement'
-  | 'media_gallery'
   | null;
 
 // Add this type for expanded entries
@@ -165,6 +164,32 @@ const modalStyles = `
   }
   .expand-button:hover {
     background-color: #6B7280 !important;
+  }
+  .view-graph-button {
+    background-color: #2563EB !important;
+    color: white !important;
+    padding: 0.5rem 1rem !important;
+    border-radius: 0.5rem !important;
+    transition: background-color 0.2s !important;
+    border: none !important;
+    cursor: pointer !important;
+  }
+  .view-graph-button:hover {
+    background-color: #1D4ED8 !important;
+  }
+  @media (prefers-color-scheme: light) {
+    .expand-button, .view-graph-button {
+      background-color: #4B5563 !important;
+    }
+    .expand-button:hover {
+      background-color: #6B7280 !important;
+    }
+    .view-graph-button {
+      background-color: #2563EB !important;
+    }
+    .view-graph-button:hover {
+      background-color: #1D4ED8 !important;
+    }
   }
 `;
 
@@ -356,7 +381,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
                     </div>
                     <div className="flex justify-center mt-4">
                       <button 
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                        className="view-graph-button"
                         onClick={() => setShowGraph({ show: true, category: 'discovery' })}
                       >
                         <span style={{ color: 'white !important' }}>View Graph</span>
@@ -408,7 +433,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
                     </div>
                     <div className="flex justify-center mt-4">
                       <button 
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                        className="view-graph-button"
                         onClick={() => setShowGraph({ show: true, category: 'physical_properties' })}
                       >
                         <span style={{ color: 'white !important' }}>View Graph</span>
@@ -470,7 +495,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
                       </div>
                       <div className="flex justify-center mt-4">
                         <button 
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                          className="view-graph-button"
                           onClick={() => setShowGraph({ show: true, category: 'key_people' })}
                         >
                           <span style={{ color: 'white !important' }}>View Graph</span>
@@ -528,7 +553,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
                       ))}
                       <div className="flex justify-center mt-4">
                         <button 
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                          className="view-graph-button"
                           onClick={() => setShowGraph({ show: true, category: 'publications' })}
                         >
                           <span style={{ color: 'white !important' }}>View Graph</span>
@@ -677,91 +702,6 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
                           </ul>
                         </div>
                       )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Media Gallery */}
-              {metadata.media_and_visualizations && (
-                <div>
-                  <button 
-                    className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
-                    style={{ minWidth: '200px', width: '100%' }}
-                    onClick={() => setExpandedCategory(expandedCategory === 'media_gallery' ? null : 'media_gallery')}
-                  >
-                    <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Media Gallery</span>
-                    <span className="text-xl ml-2" style={{ 
-                      color: 'white !important',
-                      transform: expandedCategory === 'media_gallery' ? 'rotate(90deg)' : 'none',
-                      transition: 'transform 0.2s'
-                    }}>›</span>
-                  </button>
-                  {expandedCategory === 'media_gallery' && (
-                    <div className="mt-2 p-4 bg-gray-800 rounded-lg" style={{ color: 'white !important' }}>
-                      <div className="flex justify-end mb-4">
-                        <button 
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-                          onClick={() => setShowGraph({ show: true, category: 'media_gallery' })}
-                        >
-                          <span style={{ color: 'white !important' }}>View Graph</span>
-                        </button>
-                      </div>
-                      <div className="bg-gray-700 p-3 rounded mb-2">
-                        <p className="text-white font-bold" style={{ color: 'white !important' }}>Images</p>
-                        {!expandedEntries['media_gallery'] && (
-                          <button
-                            onClick={() => toggleEntryExpansion('media_gallery', 'media_gallery')}
-                            className="text-blue-400 hover:text-blue-300 mt-2"
-                            style={{ color: '#60A5FA !important' }}
-                          >
-                            Show More
-                          </button>
-                        )}
-                        {expandedEntries['media_gallery'] && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4" style={{ color: 'white !important' }}>
-                            {metadata.media_and_visualizations.images.map((item, index) => (
-                              <div key={`img-${index}`} className="relative" style={{ color: 'white !important' }}>
-                                <img 
-                                  src={item.url} 
-                                  alt={item.title}
-                                  className="w-full h-48 object-cover rounded"
-                                />
-                                <p className="text-sm mt-1 text-white" style={{ color: 'white !important' }}>{item.title}</p>
-                                <p className="text-xs text-white" style={{ color: 'white !important' }}>Credit: {item.credit}</p>
-                              </div>
-                            ))}
-                            {metadata.media_and_visualizations.videos.map((item, index) => (
-                              <div key={`vid-${index}`} className="relative" style={{ color: 'white !important' }}>
-                                <a 
-                                  href={item.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="block w-full h-48 bg-gray-700 rounded flex items-center justify-center hover:bg-gray-600 transition-colors"
-                                  style={{ color: '#60A5FA !important' }}
-                                >
-                                  <span>▶ Watch on {item.platform}</span>
-                                </a>
-                                <p className="text-sm mt-1 text-white" style={{ color: 'white !important' }}>{item.title}</p>
-                              </div>
-                            ))}
-                            {metadata.media_and_visualizations["3d_models"]?.map((item, index) => (
-                              <div key={`3d-${index}`} className="relative" style={{ color: 'white !important' }}>
-                                <a 
-                                  href={item.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="block w-full h-48 bg-gray-700 rounded flex items-center justify-center hover:bg-gray-600 transition-colors"
-                                  style={{ color: '#60A5FA !important' }}
-                                >
-                                  <span>🌐 View on {item.platform}</span>
-                                </a>
-                                <p className="text-sm mt-1 text-white" style={{ color: 'white !important' }}>{item.title}</p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
                     </div>
                   )}
                 </div>
