@@ -110,12 +110,56 @@ type ExpandedCategory =
   | 'media_gallery'
   | null;
 
+// Add this style block at the top of the file, after imports
+const modalStyles = `
+  .planet-info-modal-root {
+    color: white !important;
+  }
+  .planet-info-modal-root * {
+    color: white !important;
+  }
+  .planet-info-modal-root a {
+    color: #60A5FA !important;
+  }
+  .planet-info-modal-root a:hover {
+    color: #93C5FD !important;
+  }
+  .modal-close-button {
+    background-color: white !important;
+    color: black !important;
+    width: 24px !important;
+    height: 24px !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 16px !important;
+    padding: 0 !important;
+    border: none !important;
+    cursor: pointer !important;
+    transition: opacity 0.2s !important;
+  }
+  .modal-close-button:hover {
+    opacity: 0.8 !important;
+  }
+`;
+
 export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
   const [metadata, setMetadata] = useState<PlanetMetadata | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedCategory, setExpandedCategory] = useState<ExpandedCategory>(null);
   const [showGraph, setShowGraph] = useState<{ show: boolean; category: ExpandedCategory }>({ show: false, category: null });
+
+  // Add style element to inject our CSS
+  useEffect(() => {
+    const styleElement = document.createElement('style');
+    styleElement.textContent = modalStyles;
+    document.head.appendChild(styleElement);
+    return () => {
+      document.head.removeChild(styleElement);
+    };
+  }, []);
 
   useEffect(() => {
     const loadMetadata = async () => {
@@ -165,7 +209,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
   // Show loading state
   if (isLoading) {
     return (
-      <div className="fixed bottom-0 right-0 p-4 z-50" style={{ backgroundColor: 'transparent' }}>
+      <div className="fixed bottom-0 right-0 p-4 z-50 planet-info-modal-root" style={{ backgroundColor: 'transparent' }}>
         <div className="bg-black bg-opacity-90 p-8 rounded-lg shadow-lg w-[600px] max-h-[90vh] overflow-y-auto" style={{ 
           backgroundColor: 'rgba(0, 0, 0, 0.9) !important',
           color: 'white !important'
@@ -173,8 +217,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
           <div className="flex justify-end mb-2">
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white"
-              style={{ color: '#9CA3AF !important' }}
+              className="modal-close-button"
             >
               ✕
             </button>
@@ -195,7 +238,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
   // Show error state
   if (error) {
     return (
-      <div className="fixed bottom-0 right-0 p-4 z-50" style={{ backgroundColor: 'transparent' }}>
+      <div className="fixed bottom-0 right-0 p-4 z-50 planet-info-modal-root" style={{ backgroundColor: 'transparent' }}>
         <div className="bg-black bg-opacity-90 p-8 rounded-lg shadow-lg w-[600px] max-h-[90vh] overflow-y-auto" style={{ 
           backgroundColor: 'rgba(0, 0, 0, 0.9) !important',
           color: 'white !important'
@@ -203,8 +246,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
           <div className="flex justify-end mb-2">
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white"
-              style={{ color: '#9CA3AF !important' }}
+              className="modal-close-button"
             >
               ✕
             </button>
@@ -224,7 +266,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
   if (metadata) {
     return (
       <>
-        <div className="fixed bottom-0 right-0 p-4 z-50" style={{ backgroundColor: 'transparent' }}>
+        <div className="fixed bottom-0 right-0 p-4 z-50 planet-info-modal-root" style={{ backgroundColor: 'transparent' }}>
           <div className="bg-black bg-opacity-90 p-8 rounded-lg shadow-lg w-[600px] max-h-[90vh] overflow-y-auto" style={{ 
             backgroundColor: 'rgba(0, 0, 0, 0.9) !important',
             color: 'white !important'
@@ -232,8 +274,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
             <div className="flex justify-end mb-2">
               <button
                 onClick={onClose}
-                className="text-gray-400 hover:text-white"
-                style={{ color: '#9CA3AF !important' }}
+                className="modal-close-button"
               >
                 ✕
               </button>
@@ -249,31 +290,33 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
               {/* Discovery Information */}
               <div>
                 <button 
-                  className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
-                  style={{ minWidth: '200px', width: '100%' }}
+                    className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
+                    style={{ minWidth: '200px', width: '100%' }}
                   onClick={() => setExpandedCategory(expandedCategory === 'discovery' ? null : 'discovery')}
                 >
-                  <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Discovery</span>
-                  <span className="text-xl ml-2" style={{ 
-                    color: 'white !important',
-                    transform: expandedCategory === 'discovery' ? 'rotate(90deg)' : 'none',
-                    transition: 'transform 0.2s'
+                    <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Discovery</span>
+                    <span className="text-xl ml-2" style={{ 
+                      color: 'white !important',
+                      transform: expandedCategory === 'discovery' ? 'rotate(90deg)' : 'none',
+                      transition: 'transform 0.2s'
                   }}>›</span>
                 </button>
                 {expandedCategory === 'discovery' && (
-                  <div className="mt-2 p-4 bg-gray-800 rounded-lg" style={{ color: 'white !important' }}>
-                    <div className="flex justify-end mb-4">
-                      <button 
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-                        onClick={() => setShowGraph({ show: true, category: 'discovery' })}
-                      >
-                        <span style={{ color: 'white !important' }}>View Graph</span>
-                      </button>
-                    </div>
-                    <p style={{ color: 'white !important' }}>Year: {metadata.discovery.discovery_year}</p>
-                    <p style={{ color: 'white !important' }}>Discovered by: {metadata.discovery.discovered_by}</p>
-                    <p style={{ color: 'white !important' }}>Method: {metadata.discovery.discovery_method}</p>
-                    <p style={{ color: 'white !important' }}>Telescope: {metadata.discovery.telescope}</p>
+                    <div className="mt-2 p-4 bg-gray-800 rounded-lg" style={{ color: 'white !important' }}>
+                      <div className="flex justify-end mb-4">
+                        <button 
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                          onClick={() => setShowGraph({ show: true, category: 'discovery' })}
+                        >
+                          <span style={{ color: 'white !important' }}>View Graph</span>
+                        </button>
+                      </div>
+                      <div style={{ color: 'white !important' }}>
+                        <p className="text-white" style={{ color: 'white !important' }}>Year: {metadata.discovery.discovery_year}</p>
+                        <p className="text-white" style={{ color: 'white !important' }}>Discovered by: {metadata.discovery.discovered_by}</p>
+                        <p className="text-white" style={{ color: 'white !important' }}>Method: {metadata.discovery.discovery_method}</p>
+                        <p className="text-white" style={{ color: 'white !important' }}>Telescope: {metadata.discovery.telescope}</p>
+                      </div>
                   </div>
                 )}
               </div>
@@ -281,36 +324,38 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
               {/* Physical Properties */}
               <div>
                 <button 
-                  className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
-                  style={{ minWidth: '200px', width: '100%' }}
+                    className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
+                    style={{ minWidth: '200px', width: '100%' }}
                   onClick={() => setExpandedCategory(expandedCategory === 'physical_properties' ? null : 'physical_properties')}
                 >
-                  <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Physical Properties</span>
-                  <span className="text-xl ml-2" style={{ 
-                    color: 'white !important',
-                    transform: expandedCategory === 'physical_properties' ? 'rotate(90deg)' : 'none',
-                    transition: 'transform 0.2s'
+                    <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Physical Properties</span>
+                    <span className="text-xl ml-2" style={{ 
+                      color: 'white !important',
+                      transform: expandedCategory === 'physical_properties' ? 'rotate(90deg)' : 'none',
+                      transition: 'transform 0.2s'
                   }}>›</span>
                 </button>
                 {expandedCategory === 'physical_properties' && (
-                  <div className="mt-2 p-4 bg-gray-800 rounded-lg" style={{ color: 'white !important' }}>
-                    <div className="flex justify-end mb-4">
-                      <button 
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-                        onClick={() => setShowGraph({ show: true, category: 'physical_properties' })}
-                      >
-                        <span style={{ color: 'white !important' }}>View Graph</span>
-                      </button>
-                    </div>
-                    <p style={{ color: 'white !important' }}>Mass: {metadata.object_properties.mass_earth.toFixed(2)} Earth masses</p>
-                    <p style={{ color: 'white !important' }}>Radius: {metadata.object_properties.radius_earth.toFixed(2)} Earth radii</p>
-                    <p style={{ color: 'white !important' }}>Orbital Period: {metadata.object_properties.orbital_period_days.toFixed(2)} days</p>
-                    <p style={{ color: 'white !important' }}>Semi-major Axis: {metadata.object_properties.semi_major_axis_au.toFixed(4)} AU</p>
-                    <p style={{ color: 'white !important' }}>Equilibrium Temperature: {metadata.object_properties.equilibrium_temperature_K.toFixed(0)} K</p>
-                    <p style={{ color: 'white !important' }}>Orbital Eccentricity: {metadata.object_properties.orbital_eccentricity.toFixed(4)}</p>
-                    <p style={{ color: 'white !important' }}>Mean Density: {metadata.object_properties.mean_density_g_cm3.toFixed(2)} g/cm³</p>
-                    <p style={{ color: 'white !important' }}>Host Star: {metadata.object_properties.host_star}</p>
-                    <p style={{ color: 'white !important' }}>Number in System: {metadata.object_properties.number_in_system}</p>
+                    <div className="mt-2 p-4 bg-gray-800 rounded-lg" style={{ color: 'white !important' }}>
+                      <div className="flex justify-end mb-4">
+                        <button 
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                          onClick={() => setShowGraph({ show: true, category: 'physical_properties' })}
+                        >
+                          <span style={{ color: 'white !important' }}>View Graph</span>
+                        </button>
+                      </div>
+                      <div style={{ color: 'white !important' }}>
+                        <p className="text-white" style={{ color: 'white !important' }}>Mass: {metadata.object_properties.mass_earth.toFixed(2)} Earth masses</p>
+                        <p className="text-white" style={{ color: 'white !important' }}>Radius: {metadata.object_properties.radius_earth.toFixed(2)} Earth radii</p>
+                        <p className="text-white" style={{ color: 'white !important' }}>Orbital Period: {metadata.object_properties.orbital_period_days.toFixed(2)} days</p>
+                        <p className="text-white" style={{ color: 'white !important' }}>Semi-major Axis: {metadata.object_properties.semi_major_axis_au.toFixed(4)} AU</p>
+                        <p className="text-white" style={{ color: 'white !important' }}>Equilibrium Temperature: {metadata.object_properties.equilibrium_temperature_K.toFixed(0)} K</p>
+                        <p className="text-white" style={{ color: 'white !important' }}>Orbital Eccentricity: {metadata.object_properties.orbital_eccentricity.toFixed(4)}</p>
+                        <p className="text-white" style={{ color: 'white !important' }}>Mean Density: {metadata.object_properties.mean_density_g_cm3.toFixed(2)} g/cm³</p>
+                        <p className="text-white" style={{ color: 'white !important' }}>Host Star: {metadata.object_properties.host_star}</p>
+                        <p className="text-white" style={{ color: 'white !important' }}>Number in System: {metadata.object_properties.number_in_system}</p>
+                      </div>
                   </div>
                 )}
               </div>
@@ -319,33 +364,33 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
               {metadata.key_people && metadata.key_people.length > 0 && (
                 <div>
                   <button 
-                    className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
-                    style={{ minWidth: '200px', width: '100%' }}
+                      className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
+                      style={{ minWidth: '200px', width: '100%' }}
                     onClick={() => setExpandedCategory(expandedCategory === 'key_people' ? null : 'key_people')}
                   >
-                    <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Key People</span>
-                    <span className="text-xl ml-2" style={{ 
-                      color: 'white !important',
-                      transform: expandedCategory === 'key_people' ? 'rotate(90deg)' : 'none',
-                      transition: 'transform 0.2s'
+                      <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Key People</span>
+                      <span className="text-xl ml-2" style={{ 
+                        color: 'white !important',
+                        transform: expandedCategory === 'key_people' ? 'rotate(90deg)' : 'none',
+                        transition: 'transform 0.2s'
                     }}>›</span>
                   </button>
                   {expandedCategory === 'key_people' && (
-                    <div className="mt-2 p-4 bg-gray-800 rounded-lg" style={{ color: 'white !important' }}>
-                      <div className="flex justify-end mb-4">
-                        <button 
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-                          onClick={() => setShowGraph({ show: true, category: 'key_people' })}
-                        >
-                          <span style={{ color: 'white !important' }}>View Graph</span>
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="mt-2 p-4 bg-gray-800 rounded-lg" style={{ color: 'white !important' }}>
+                        <div className="flex justify-end mb-4">
+                          <button 
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                            onClick={() => setShowGraph({ show: true, category: 'key_people' })}
+                          >
+                            <span style={{ color: 'white !important' }}>View Graph</span>
+                          </button>
+                        </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4" style={{ color: 'white !important' }}>
                         {metadata.key_people.map((person, index) => (
-                          <div key={index} className="bg-gray-700 p-3 rounded">
-                            <p className="font-medium" style={{ color: 'white !important' }}>{person.name}</p>
-                            <p style={{ color: 'white !important' }}>{person.role}</p>
-                            <p style={{ color: 'white !important' }}>{person.institution}</p>
+                          <div key={index} className="bg-gray-700 p-3 rounded" style={{ color: 'white !important' }}>
+                              <p className="font-medium text-white" style={{ color: 'white !important' }}>{person.name}</p>
+                              <p className="text-white" style={{ color: 'white !important' }}>{person.role}</p>
+                              <p className="text-white" style={{ color: 'white !important' }}>{person.institution}</p>
                             {person.orcid && (
                               <a 
                                 href={`https://orcid.org/${person.orcid}`}
@@ -369,29 +414,29 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
               {metadata.publications && metadata.publications.length > 0 && (
                 <div>
                   <button 
-                    className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
-                    style={{ minWidth: '200px', width: '100%' }}
+                      className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
+                      style={{ minWidth: '200px', width: '100%' }}
                     onClick={() => setExpandedCategory(expandedCategory === 'publications' ? null : 'publications')}
                   >
-                    <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Key Publications</span>
-                    <span className="text-xl ml-2" style={{ 
-                      color: 'white !important',
-                      transform: expandedCategory === 'publications' ? 'rotate(90deg)' : 'none',
-                      transition: 'transform 0.2s'
+                      <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Key Publications</span>
+                      <span className="text-xl ml-2" style={{ 
+                        color: 'white !important',
+                        transform: expandedCategory === 'publications' ? 'rotate(90deg)' : 'none',
+                        transition: 'transform 0.2s'
                     }}>›</span>
                   </button>
                   {expandedCategory === 'publications' && (
-                    <div className="mt-2 p-4 bg-gray-800 rounded-lg space-y-4" style={{ color: 'white !important' }}>
-                      <div className="flex justify-end mb-4">
-                        <button 
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-                          onClick={() => setShowGraph({ show: true, category: 'publications' })}
-                        >
-                          <span style={{ color: 'white !important' }}>View Graph</span>
-                        </button>
-                      </div>
+                      <div className="mt-2 p-4 bg-gray-800 rounded-lg space-y-4" style={{ color: 'white !important' }}>
+                        <div className="flex justify-end mb-4">
+                          <button 
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                            onClick={() => setShowGraph({ show: true, category: 'publications' })}
+                          >
+                            <span style={{ color: 'white !important' }}>View Graph</span>
+                          </button>
+                        </div>
                       {metadata.publications.map((pub, index) => (
-                        <div key={index} className="bg-gray-700 p-3 rounded">
+                        <div key={index} className="bg-gray-700 p-3 rounded" style={{ color: 'white !important' }}>
                           <a 
                             href={`https://doi.org/${pub.doi}`}
                             target="_blank" 
@@ -401,8 +446,8 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
                           >
                             {pub.title}
                           </a>
-                          <p style={{ color: 'white !important' }} className="mt-1">{pub.authors.join(', ')} ({pub.year})</p>
-                          <p style={{ color: 'white !important' }} className="text-sm">{pub.journal}</p>
+                            <p className="mt-1 text-white" style={{ color: 'white !important' }}>{pub.authors.join(', ')} ({pub.year})</p>
+                            <p className="text-sm text-white" style={{ color: 'white !important' }}>{pub.journal}</p>
                         </div>
                       ))}
                     </div>
@@ -414,32 +459,32 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
               {metadata.observational_data && (
                 <div>
                   <button 
-                    className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
-                    style={{ minWidth: '200px', width: '100%' }}
+                      className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
+                      style={{ minWidth: '200px', width: '100%' }}
                     onClick={() => setExpandedCategory(expandedCategory === 'observational_data' ? null : 'observational_data')}
                   >
-                    <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Observational Data</span>
-                    <span className="text-xl ml-2" style={{ 
-                      color: 'white !important',
-                      transform: expandedCategory === 'observational_data' ? 'rotate(90deg)' : 'none',
-                      transition: 'transform 0.2s'
+                      <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Observational Data</span>
+                      <span className="text-xl ml-2" style={{ 
+                        color: 'white !important',
+                        transform: expandedCategory === 'observational_data' ? 'rotate(90deg)' : 'none',
+                        transition: 'transform 0.2s'
                     }}>›</span>
                   </button>
                   {expandedCategory === 'observational_data' && (
-                    <div className="mt-2 p-4 bg-gray-800 rounded-lg space-y-4" style={{ color: 'white !important' }}>
-                      <div className="flex justify-end mb-4">
-                        <button 
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-                          onClick={() => setShowGraph({ show: true, category: 'observational_data' })}
-                        >
-                          <span style={{ color: 'white !important' }}>View Graph</span>
-                        </button>
-                      </div>
-                      <div>
-                        <h4 className="font-medium mb-2" style={{ color: 'white !important' }}>Data Sources</h4>
-                        <ul className="list-disc pl-5 space-y-2">
+                      <div className="mt-2 p-4 bg-gray-800 rounded-lg space-y-4" style={{ color: 'white !important' }}>
+                        <div className="flex justify-end mb-4">
+                          <button 
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                            onClick={() => setShowGraph({ show: true, category: 'observational_data' })}
+                          >
+                            <span style={{ color: 'white !important' }}>View Graph</span>
+                          </button>
+                        </div>
+                      <div style={{ color: 'white !important' }}>
+                          <h4 className="font-medium mb-2 text-white" style={{ color: 'white !important' }}>Data Sources</h4>
+                        <ul className="list-disc pl-5 space-y-2" style={{ color: 'white !important' }}>
                           {metadata.observational_data.data_sources.map((source, index) => (
-                            <li key={index}>
+                            <li key={index} className="text-white" style={{ color: 'white !important' }}>
                               <a 
                                 href={source.url}
                                 target="_blank"
@@ -453,12 +498,12 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
                         </ul>
                       </div>
                       {metadata.observational_data.spectral_observations && (
-                        <div>
-                          <h4 className="font-medium mb-2" style={{ color: 'white !important' }}>Spectral Observations</h4>
-                          <ul className="list-disc pl-5 space-y-2">
+                        <div style={{ color: 'white !important' }}>
+                            <h4 className="font-medium mb-2 text-white" style={{ color: 'white !important' }}>Spectral Observations</h4>
+                          <ul className="list-disc pl-5 space-y-2" style={{ color: 'white !important' }}>
                             {metadata.observational_data.spectral_observations.map((obs, index) => (
-                              <li key={index}>
-                                <span style={{ color: 'white !important' }}>{obs.instrument}: </span>
+                              <li key={index} className="text-white" style={{ color: 'white !important' }}>
+                                  <span className="text-white" style={{ color: 'white !important' }}>{obs.instrument}: </span>
                                 <a 
                                   href={obs.url}
                                   target="_blank"
@@ -481,33 +526,33 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
               {metadata.public_engagement && (
                 <div>
                   <button 
-                    className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
-                    style={{ minWidth: '200px', width: '100%' }}
+                      className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
+                      style={{ minWidth: '200px', width: '100%' }}
                     onClick={() => setExpandedCategory(expandedCategory === 'public_engagement' ? null : 'public_engagement')}
                   >
-                    <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Public Engagement</span>
-                    <span className="text-xl ml-2" style={{ 
-                      color: 'white !important',
-                      transform: expandedCategory === 'public_engagement' ? 'rotate(90deg)' : 'none',
-                      transition: 'transform 0.2s'
+                      <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Public Engagement</span>
+                      <span className="text-xl ml-2" style={{ 
+                        color: 'white !important',
+                        transform: expandedCategory === 'public_engagement' ? 'rotate(90deg)' : 'none',
+                        transition: 'transform 0.2s'
                     }}>›</span>
                   </button>
                   {expandedCategory === 'public_engagement' && (
-                    <div className="mt-2 p-4 bg-gray-800 rounded-lg space-y-4" style={{ color: 'white !important' }}>
-                      <div className="flex justify-end mb-4">
-                        <button 
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-                          onClick={() => setShowGraph({ show: true, category: 'public_engagement' })}
-                        >
-                          <span style={{ color: 'white !important' }}>View Graph</span>
-                        </button>
-                      </div>
+                      <div className="mt-2 p-4 bg-gray-800 rounded-lg space-y-4" style={{ color: 'white !important' }}>
+                        <div className="flex justify-end mb-4">
+                          <button 
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                            onClick={() => setShowGraph({ show: true, category: 'public_engagement' })}
+                          >
+                            <span style={{ color: 'white !important' }}>View Graph</span>
+                          </button>
+                        </div>
                       {metadata.public_engagement.citizen_science && (
-                        <div>
-                          <h4 className="font-medium mb-2" style={{ color: 'white !important' }}>Citizen Science</h4>
-                          <ul className="list-disc pl-5 space-y-2">
+                        <div style={{ color: 'white !important' }}>
+                            <h4 className="font-medium mb-2 text-white" style={{ color: 'white !important' }}>Citizen Science</h4>
+                          <ul className="list-disc pl-5 space-y-2" style={{ color: 'white !important' }}>
                             {metadata.public_engagement.citizen_science.map((project, index) => (
-                              <li key={index}>
+                              <li key={index} className="text-white" style={{ color: 'white !important' }}>
                                 <a 
                                   href={project.url}
                                   target="_blank"
@@ -522,11 +567,11 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
                         </div>
                       )}
                       {metadata.public_engagement.popular_articles && (
-                        <div>
-                          <h4 className="font-medium mb-2" style={{ color: 'white !important' }}>Popular Articles</h4>
-                          <ul className="list-disc pl-5 space-y-2">
+                        <div style={{ color: 'white !important' }}>
+                            <h4 className="font-medium mb-2 text-white" style={{ color: 'white !important' }}>Popular Articles</h4>
+                          <ul className="list-disc pl-5 space-y-2" style={{ color: 'white !important' }}>
                             {metadata.public_engagement.popular_articles.map((article, index) => (
-                              <li key={index}>
+                              <li key={index} className="text-white" style={{ color: 'white !important' }}>
                                 <a 
                                   href={article.url}
                                   target="_blank"
@@ -549,41 +594,41 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
               {metadata.media_and_visualizations && (
                 <div>
                   <button 
-                    className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
-                    style={{ minWidth: '200px', width: '100%' }}
+                      className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
+                      style={{ minWidth: '200px', width: '100%' }}
                     onClick={() => setExpandedCategory(expandedCategory === 'media_gallery' ? null : 'media_gallery')}
                   >
-                    <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Media Gallery</span>
-                    <span className="text-xl ml-2" style={{ 
-                      color: 'white !important',
-                      transform: expandedCategory === 'media_gallery' ? 'rotate(90deg)' : 'none',
-                      transition: 'transform 0.2s'
+                      <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Media Gallery</span>
+                      <span className="text-xl ml-2" style={{ 
+                        color: 'white !important',
+                        transform: expandedCategory === 'media_gallery' ? 'rotate(90deg)' : 'none',
+                        transition: 'transform 0.2s'
                     }}>›</span>
                   </button>
                   {expandedCategory === 'media_gallery' && (
-                    <div className="mt-2 p-4 bg-gray-800 rounded-lg" style={{ color: 'white !important' }}>
-                      <div className="flex justify-end mb-4">
-                        <button 
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-                          onClick={() => setShowGraph({ show: true, category: 'media_gallery' })}
-                        >
-                          <span style={{ color: 'white !important' }}>View Graph</span>
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="mt-2 p-4 bg-gray-800 rounded-lg" style={{ color: 'white !important' }}>
+                        <div className="flex justify-end mb-4">
+                          <button 
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                            onClick={() => setShowGraph({ show: true, category: 'media_gallery' })}
+                          >
+                            <span style={{ color: 'white !important' }}>View Graph</span>
+                          </button>
+                        </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4" style={{ color: 'white !important' }}>
                         {metadata.media_and_visualizations.images.map((item, index) => (
-                          <div key={`img-${index}`} className="relative">
+                          <div key={`img-${index}`} className="relative" style={{ color: 'white !important' }}>
                             <img 
                               src={item.url} 
                               alt={item.title}
                               className="w-full h-48 object-cover rounded"
                             />
-                            <p style={{ color: 'white !important' }} className="text-sm mt-1">{item.title}</p>
-                            <p style={{ color: 'white !important' }} className="text-xs">Credit: {item.credit}</p>
+                              <p className="text-sm mt-1 text-white" style={{ color: 'white !important' }}>{item.title}</p>
+                              <p className="text-xs text-white" style={{ color: 'white !important' }}>Credit: {item.credit}</p>
                           </div>
                         ))}
                         {metadata.media_and_visualizations.videos.map((item, index) => (
-                          <div key={`vid-${index}`} className="relative">
+                          <div key={`vid-${index}`} className="relative" style={{ color: 'white !important' }}>
                             <a 
                               href={item.url}
                               target="_blank"
@@ -593,11 +638,11 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
                             >
                               <span>▶ Watch on {item.platform}</span>
                             </a>
-                            <p style={{ color: 'white !important' }} className="text-sm mt-1">{item.title}</p>
+                              <p className="text-sm mt-1 text-white" style={{ color: 'white !important' }}>{item.title}</p>
                           </div>
                         ))}
                         {metadata.media_and_visualizations["3d_models"]?.map((item, index) => (
-                          <div key={`3d-${index}`} className="relative">
+                          <div key={`3d-${index}`} className="relative" style={{ color: 'white !important' }}>
                             <a 
                               href={item.url}
                               target="_blank"
@@ -607,7 +652,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
                             >
                               <span>🌐 View on {item.platform}</span>
                             </a>
-                            <p style={{ color: 'white !important' }} className="text-sm mt-1">{item.title}</p>
+                              <p className="text-sm mt-1 text-white" style={{ color: 'white !important' }}>{item.title}</p>
                           </div>
                         ))}
                       </div>
@@ -619,11 +664,13 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
           </div>
         </div>
         {showGraph.show && metadata && (
-          <RelationshipGraph
-            metadata={metadata}
-            category={showGraph.category}
-            onClose={() => setShowGraph({ show: false, category: null })}
-          />
+          <div className="planet-info-modal-root">
+            <RelationshipGraph
+              metadata={metadata}
+              category={showGraph.category}
+              onClose={() => setShowGraph({ show: false, category: null })}
+            />
+          </div>
         )}
       </>
     );
