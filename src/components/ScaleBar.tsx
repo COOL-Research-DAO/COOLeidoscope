@@ -66,7 +66,7 @@ export function ScaleBar() {
   return (
     <div style={{
       position: 'absolute',
-      bottom: '20px',
+      bottom: '40px',
       left: '50%',
       transform: 'translateX(-50%)',
       backgroundColor: 'rgba(0, 0, 0, 0.7)',

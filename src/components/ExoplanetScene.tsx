@@ -1292,13 +1292,13 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       <div 
         style={{
           position: 'absolute',
-          bottom: '30px',
+          bottom: '55px',
           left: '350px',
           backgroundColor: 'rgba(0, 0, 0, 0.7)',
           color: 'white',
           padding: '8px',
           borderRadius: '4px',
-          width: '200px',
+          width: '280px',
           display: 'flex',
           alignItems: 'center',
           gap: '8px'
@@ -1357,6 +1357,7 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
               padding: '0.5rem',
               borderRadius: '4px',
               border: '1px solid #666',
+              height: '38px',
               backgroundColor: 'rgba(0, 0, 0, 0.7)',
               color: 'white',
               width: '300px',
@@ -1396,41 +1397,61 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           )}
         </div>
       </div>
-      {/* Home button - moved to top left corner */}
+      {/* Home button */}
       <button
         onClick={() => {
           if (sceneRef.current) {
             sceneRef.current.resetView();
           }
+          // Close any open panels
+          setCompactSystem(null);
+          setSelectedSystem(null);
+          setSelectedPlanet(null);
         }}
         style={{
           position: 'fixed',
           top: '1rem',
-          left: '1rem',
+          right: '22.6em',
           padding: '8px',
-          width: '40px',
-          height: '40px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: 'rgba(10, 12, 16, 0.95)',
+          width: '38px',
+          height: '38px',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
           border: '1px solid #666',
           borderRadius: '4px',
           color: 'white',
           cursor: 'pointer',
           zIndex: 1000,
-          fontSize: '22px',
         }}
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M12 2.5L2 11.5H5V20.5H19V11.5H22L12 2.5Z" fill="white"/>
         </svg>
       </button>
+
+      {/* COOL Research DAO Logo */}
+      <div style={{
+        position: 'fixed',
+        top: '1rem',
+        left: '1rem',
+        zIndex: 1000,
+      }}>
+        <img 
+          src="https://raw.githubusercontent.com/COOL-Research-DAO/Database/main/logo/COOLeidoscope_logo_black.png" 
+          alt="COOLeidoscope Logo" 
+          style={{
+            height: '80px',
+            backgroundColor: 'white',
+            padding: '0px',
+            borderRadius: '0px',
+          }}
+        />
+      </div>
+
       {showHelp && (
         <div style={{
           position: 'fixed',
-          top: '3.5rem', // Moved down to accommodate home button
-          left: '1rem',
+          top: '6rem',
+          left: '0.5rem',
           backgroundColor: 'rgba(0, 0, 0, 0.7)',
           padding: '1rem',
           borderRadius: '8px',
@@ -1476,6 +1497,8 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
             system={selectedSystem} 
             onClose={() => setSelectedSystem(null)} 
             compact={false}
+            showHabitableZones={showHabitableZones}
+            onToggleHabitableZones={() => setShowHabitableZones(!showHabitableZones)}
           />
         </div>
       )}
@@ -1494,8 +1517,8 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       )}
       <div style={{
         position: 'fixed',
-        bottom: '3rem', // Move compact info panel higher
-        left: '1rem',
+        bottom: '1rem', 
+        left: '0.5rem',
         zIndex: 999,
         maxWidth: '300px',
         backgroundColor: 'rgba(0, 0, 0, 0.8)',
@@ -1506,27 +1529,10 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           system={compactSystem} 
           onClose={() => setCompactSystem(null)} 
           compact={true}
+          showHabitableZones={showHabitableZones}
+          onToggleHabitableZones={() => setShowHabitableZones(!showHabitableZones)}
         />
       </div>
-      {/* Habitable zone toggle button */}
-      <button
-        onClick={() => setShowHabitableZones(!showHabitableZones)}
-        style={{
-          position: 'fixed',
-          bottom: '1.9rem',
-          left: '1.9rem',
-          padding: '8px',
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          border: '1px solid #666',
-          borderRadius: '4px',
-          color: 'white',
-          cursor: 'pointer',
-          zIndex: 999,
-          marginBottom: 0, // Remove margin since we moved the panel up
-        }}
-      >
-        {showHabitableZones ? 'Hide Habitable Zone' : 'Show Habitable Zone'}
-      </button>
       
       {/* Filter button */}
       <button
@@ -1536,6 +1542,8 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           top: '1rem',
           right: '320px',
           padding: '8px',
+          width: '38px',
+          height: '38px',
           backgroundColor: 'rgba(0, 0, 0, 0.7)',
           border: '1px solid #666',
           borderRadius: '4px',
@@ -1574,6 +1582,35 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       >
         {isPaused ? '⏸' : '⏵'}
       </div>
+
+      {/* Footer */}
+      <div style={{
+        position: 'fixed',
+        bottom: '0.5rem',
+        left: '0',
+        width: '100%',
+        textAlign: 'center',
+        color: '#b5b5b5',
+        fontSize: '0.9rem',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '4px'
+      }}>
+        <img 
+          src="https://raw.githubusercontent.com/COOL-Research-DAO/Database/main/logo/COOLeidoscope_logo_black.png" 
+          alt="COOLeidoscope Logo" 
+          style={{
+            height: '28px',
+            backgroundColor: 'white',
+            padding: '0px',
+            borderRadius: '0px',
+          }}
+        />
+        built by COOL Research Labs 2025 | <a href="https://coolresearch.io/" target="_blank" rel="noopener noreferrer" style={{ color: '#3B82F6', textDecoration: 'underline' }}>coolresearch.io</a>
+      </div>
+      
       <style>
         {`
           @keyframes fadeOut {

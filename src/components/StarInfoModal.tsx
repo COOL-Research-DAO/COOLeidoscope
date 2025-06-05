@@ -5,9 +5,11 @@ interface StarInfoModalProps {
   system: ExoplanetSystem | null;
   onClose: () => void;
   compact: boolean;
+  showHabitableZones?: boolean;
+  onToggleHabitableZones?: () => void;
 }
 
-export function StarInfoModal({ system, onClose, compact }: StarInfoModalProps) {
+export function StarInfoModal({ system, onClose, compact, showHabitableZones, onToggleHabitableZones }: StarInfoModalProps) {
   if (!system) return null;
 
   const modalStyle: CSSProperties = compact ? {
@@ -115,6 +117,26 @@ export function StarInfoModal({ system, onClose, compact }: StarInfoModalProps) 
             <p>Temperature: {formatError(system.st_teff, system.st_teff_err1, system.st_teff_err2)}{system.st_teff !== null && !isNaN(system.st_teff) ? 'K' : ''}</p>
             <p>Rotation Period: {formatError(system.st_rotp, system.st_rotperr1, system.st_rotperr2)}{system.st_rotp !== null && !isNaN(system.st_rotp) ? ' days' : ''}{system.st_rotplim ? ` (${system.st_rotplim})` : ''}</p>
           </div>
+
+          {/* Habitable Zone toggle button for compact view */}
+          {compact && onToggleHabitableZones && (
+            <button
+              onClick={onToggleHabitableZones}
+              style={{
+                width: '80%',
+                padding: '8px',
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                border: '1px solid #666',
+                borderRadius: '4px',
+                color: 'white',
+                cursor: 'pointer',
+                marginTop: '-0.5rem',
+                textAlign: 'center',
+              }}
+            >
+              {showHabitableZones ? 'Hide Habitable Zone' : 'Show Habitable Zone'}
+            </button>
+          )}
 
           {!compact && (
             <div>

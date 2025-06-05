@@ -33,6 +33,17 @@ const TEXTURE_PATHS = {
 
 // Helper to get planet texture URL
 const getPlanetTexturePath = (name: string): string[] => {
+  // Check for common planet names regardless of exact formatting
+  if (name.match(/jupiter/i)) name = "jupiter";
+  if (name.match(/saturn/i)) name = "saturn";
+  if (name.match(/mercury/i)) name = "mercury";
+  if (name.match(/venus/i)) name = "venus";
+  if (name.match(/earth/i)) name = "earth";
+  if (name.match(/mars/i)) name = "mars";
+  if (name.match(/uranus/i)) name = "uranus";
+  if (name.match(/neptune/i)) name = "neptune";
+  if (name.match(/pluto/i)) name = "pluto";
+  
   return [
     `${BASE_PATH}/images/2k_${name}.jpg`,
     `${BASE_PATH}/images/2k_${name}.png`,
@@ -229,7 +240,9 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       }
     `,
     transparent: true,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    depthWrite: true,
+    depthTest: true
   }), []);
 
   // Create moon shader material
@@ -304,7 +317,9 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       }
     `,
     transparent: false,
-    side: THREE.FrontSide
+    side: THREE.FrontSide,
+    depthWrite: true,
+    depthTest: true
   }), []);
 
   // Load moon texture when close to Earth
@@ -348,8 +363,13 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
 
   // Determine which planets should show detailed textures
   useEffect(() => {
+    // Skip all calculations if the system is not visible
+    if (!visible) {
+      return;
+    }
+    
     // Calculate distance to each planet and determine if it should show texture
-    const detailedThreshold = 0.0002; // parsecs, smaller value to only load textures for very nearby planets
+    const detailedThreshold = 0.001; // Increased from 0.0003 to capture more planets
     
     // Don't recalculate on every tiny camera movement
     if (lastCameraDistanceRef.current !== null && 
@@ -370,10 +390,18 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       const planetPos = new THREE.Vector3().copy(planetGroup.position);
       const distanceToPlanet = camera.position.distanceTo(planetPos);
       
-      // Planet is detailed if we're close enough
-      const isDetailed = distanceToPlanet < detailedThreshold;
+      // Check if the planet is part of our solar system
+      const isSolarSystemPlanet = !!planet.pl_name?.toLowerCase().match(/mercury|venus|earth|mars|jupiter|saturn|uranus|neptune|pluto/i);
+      
+      // Planet is detailed if we're close enough or it's part of our solar system
+      const isDetailed = distanceToPlanet < detailedThreshold || isSolarSystemPlanet;
+      
+      // Limit logging to reduce console spam
       if (isDetailed) {
+        // Only log occasionally
+        if (Math.random() < 0.1) { // 10% chance to log
         console.log(`Planet ${planet.pl_name} is close enough for detailed texture (${distanceToPlanet} < ${detailedThreshold})`);
+        }
       }
       return isDetailed;
     });
@@ -382,7 +410,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     if (JSON.stringify(newDetailedState) !== JSON.stringify(detailedPlanets)) {
       setDetailedPlanets(newDetailedState);
     }
-  }, [distanceToCamera, system.planets, camera.position]);
+  }, [distanceToCamera, system.planets, camera.position, visible]);
 
   // Initialize refs if needed
   useEffect(() => {
@@ -486,7 +514,11 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
               
               gl_FragColor = vec4(color, 1.0);
             }
-          `
+          `,
+          transparent: false,
+          side: THREE.FrontSide,
+          depthWrite: true,
+          depthTest: true
         });
       });
     }
@@ -494,11 +526,16 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   
   // Load and apply planet textures
   useEffect(() => {
+    // Skip all texture loading if the system is not visible
+    if (!visible) {
+      return;
+    }
+    
     // Skip all texture loading if no planets are detailed
     if (!detailedPlanets.some(isDetailed => isDetailed)) {
       // Only log once when transitioning from having detailed planets to having none
       if (textureCache.size > 0) {
-        console.log("No planets are close enough for detailed textures");
+      console.log("No planets are close enough for detailed textures");
       }
       
       // Reset all textures
@@ -516,7 +553,10 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       .map((isDetailed, index) => isDetailed ? index : -1)
       .filter(index => index !== -1);
 
-    console.log("Detailed planets indices:", detailedPlanetIndices);
+    // Debug logging with rate limiting
+    if (Math.random() < 0.1) { // Only log 10% of the time to reduce spam
+      console.log("Detailed planets indices:", detailedPlanetIndices);
+    }
 
     // Only load textures for currently visible planets (in viewport)
     // Check if planet is within camera's view frustum
@@ -532,24 +572,44 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       const planetGroup = planetRefs.current[index];
       if (!planetGroup) return false;
       
-      // Create bounding sphere for frustum check
+      // Get the planet size to use for the bounding sphere
+      const planetSize = planetSizes[index] || 0.005;
+      
+      // Create bounding sphere for frustum check - use larger radius
       const planetPos = new THREE.Vector3().copy(planetGroup.position);
-      const boundingSphere = new THREE.Sphere(planetPos, 0.005); // Small sphere for the planet
+      const boundingSphere = new THREE.Sphere(planetPos, Math.max(0.02, planetSize * 5)); // Increased radius for better detection
       
       // Check if planet is visible in the frustum
       const isVisible = frustum.intersectsSphere(boundingSphere);
       
+      // Special case for known planets - always consider them visible if they're part of our solar system
       const planet = system.planets[index];
-      if (isVisible) {
-        console.log(`Planet ${planet.pl_name} is visible in the viewport`);
-      } else {
-        console.log(`Planet ${planet.pl_name} is detailed but not visible in the viewport - skipping texture loading`);
+      const isSolarSystemPlanet = !!planet.pl_name?.toLowerCase().match(/mercury|venus|earth|mars|jupiter|saturn|uranus|neptune|pluto/i);
+      
+      // Consider solar system planets as always visible for texture loading
+      const shouldLoadTexture = isVisible || isSolarSystemPlanet;
+      
+      // Reduced logging to prevent console spam
+      if (Math.random() < 0.05) { // Only log 5% of the time
+        if (shouldLoadTexture) {
+          console.log(`Planet ${planet.pl_name} is visible in the viewport or is a solar system planet`);
+        } else {
+          console.log(`Planet ${planet.pl_name} is detailed but not visible in the viewport - skipping texture loading`);
+        }
       }
       
-      return isVisible;
+      return shouldLoadTexture;
     });
 
-    console.log("Visible detailed planets indices:", visibleDetailedPlanetIndices);
+    // Only log occasionally to reduce console spam
+    if (Math.random() < 0.1) { 
+      console.log("Visible detailed planets indices:", visibleDetailedPlanetIndices);
+    }
+
+    // Skip texture loading if no planets are visible in the frustum
+    if (visibleDetailedPlanetIndices.length === 0) {
+      return;
+    }
 
     // Cleanup function to track which textures are still needed
     const neededTextures = new Set<string>();
@@ -578,7 +638,10 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
         if (planetShaders.current[index]) {
           planetShaders.current[index].uniforms.planetTexture.value = texture;
           planetShaders.current[index].uniforms.useTexture.value = 1;
+          // Reduced logging
+          if (Math.random() < 0.1) {
           console.log(`Using cached texture for ${planetName}`);
+          }
         }
         return;
       }
@@ -590,11 +653,23 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       
       // Try loading each texture path in sequence until one succeeds
       const tryLoadTexture = (pathIndex: number) => {
+        // Check if planet is still detailed and visible before loading
+        if (!detailedPlanets[index]) {
+          // Planet is no longer detailed, abort texture loading
+          return;
+        }
+        
         if (pathIndex >= namedTexturePaths.length) {
+          if (Math.random() < 0.2) { // Reduce logging frequency
           console.log(`No named texture found for ${planetName}, using random texture`);
+          }
           // Get random texture path based on planet type
           const randomTexturePath = getRandomTexturePath(planet, index);
+          
+          // Only log occasionally
+          if (Math.random() < 0.2) {
           console.log(`Selected random texture: ${randomTexturePath} for planet ${planetName}`);
+          }
           
           // Add random texture to needed textures
           neededTextures.add(randomTexturePath);
@@ -605,19 +680,36 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
             if (planetShaders.current[index]) {
               planetShaders.current[index].uniforms.planetTexture.value = texture;
               planetShaders.current[index].uniforms.useTexture.value = 1;
+              // Only log occasionally
+              if (Math.random() < 0.1) {
               console.log(`Using cached random texture for ${planetName}`);
+              }
             }
             return;
           }
           
           // Load the random texture
+          if (Math.random() < 0.2) {
           console.log(`Loading random texture from: ${randomTexturePath}`);
+          }
+          
           textureLoader.load(
             randomTexturePath,
             (texture) => {
+              // Check if planet is still detailed before applying texture
+              if (!detailedPlanets[index]) {
+                texture.dispose();
+                return;
+              }
+              
+              if (Math.random() < 0.2) {
               console.log(`Successfully loaded texture from ${randomTexturePath}`);
+              }
+              
               if (detailedPlanets[index]) {
+                if (Math.random() < 0.2) {
                 console.log(`Applying random texture for ${planetName} from ${randomTexturePath}`);
+                }
                 texture.flipY = true;
                 texture.needsUpdate = true;
                 textureCache.set(randomTexturePath, texture);
@@ -625,19 +717,21 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                 if (planetShaders.current[index]) {
                   planetShaders.current[index].uniforms.planetTexture.value = texture;
                   planetShaders.current[index].uniforms.useTexture.value = 1;
+                  if (Math.random() < 0.1) {
                   console.log(`Set useTexture to 1 for ${planetName}`);
+                  }
                 } else {
                   console.error(`No shader available for planet index ${index}`);
                 }
               } else {
                 texture.dispose();
+                if (Math.random() < 0.2) {
                 console.log(`Skipped applying random texture for ${planetName} - no longer detailed`);
+                }
               }
             },
             (progressEvent) => {
-              if (progressEvent.lengthComputable) {
-                console.log(`Loading progress for ${randomTexturePath}: ${progressEvent.loaded} / ${progressEvent.total}`);
-              }
+              // Skip progress logging to reduce console spam
             },
             (error) => {
               console.warn(`Error loading random texture for ${planetName} from ${randomTexturePath}, using basic material`);
@@ -650,14 +744,29 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
           return;
         }
         
+        // Only log occasionally
+        if (Math.random() < 0.2) {
         console.log(`Trying named texture path: ${namedTexturePaths[pathIndex]}`);
+        }
+        
         textureLoader.load(
           namedTexturePaths[pathIndex],
           (texture) => {
+            // Check if planet is still detailed before applying texture
+            if (!detailedPlanets[index]) {
+              texture.dispose();
+              return;
+            }
+            
+            if (Math.random() < 0.2) {
             console.log(`Successfully loaded texture from ${namedTexturePaths[pathIndex]}`);
+            }
+            
             // Only apply if planet is still detailed
             if (detailedPlanets[index]) {
+              if (Math.random() < 0.2) {
               console.log(`Loaded and applied texture for ${planetName} from ${namedTexturePaths[pathIndex]}`);
+              }
               texture.flipY = true;
               texture.needsUpdate = true;
               textureCache.set(planetName, texture);
@@ -665,22 +774,26 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
               if (planetShaders.current[index]) {
                 planetShaders.current[index].uniforms.planetTexture.value = texture;
                 planetShaders.current[index].uniforms.useTexture.value = 1;
+                if (Math.random() < 0.1) {
                 console.log(`Set useTexture to 1 for ${planetName}`);
+                }
               } else {
                 console.error(`No shader available for planet index ${index}`);
               }
             } else {
               texture.dispose();
+              if (Math.random() < 0.2) {
               console.log(`Skipped applying texture for ${planetName} - no longer detailed`);
+              }
             }
           },
           (progressEvent) => {
-            if (progressEvent.lengthComputable) {
-              console.log(`Loading progress for ${namedTexturePaths[pathIndex]}: ${progressEvent.loaded} / ${progressEvent.total}`);
-            }
+            // Skip progress logging to reduce console spam
           },
           (error) => {
+            if (Math.random() < 0.3) {
             console.log(`Failed to load texture from ${namedTexturePaths[pathIndex]}, trying next path...`);
+            }
             tryLoadTexture(pathIndex + 1);
           }
         );
@@ -707,7 +820,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
         }
       }
     };
-  }, [system.planets, detailedPlanets, camera.position]);
+  }, [system.planets, detailedPlanets, camera.position, visible]);
 
   // Add this new useEffect to force texture reinitialization when detailed planets change
   useEffect(() => {
@@ -1099,6 +1212,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                   handlePlanetDoubleClick(index); 
                 }}
                 userData={{ type: 'planet', hostname: system.hostname, index }}
+                renderOrder={2}
               >
                 <sphereGeometry args={[planetSizes[index], 32, 32]} />
                 <primitive object={planetShaders.current[index]} />
@@ -1107,7 +1221,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
               {/* Saturn's rings */}
               {planet.pl_name?.toLowerCase().includes('saturn') && (
                 <group rotation={[Math.PI * 92.485 / 180, 0, 0]}>
-                  <mesh>
+                  <mesh renderOrder={2}>
                     <ringGeometry args={[planetSizes[index] * 1.2, planetSizes[index] * 2.3, 64]} />
                     <primitive object={saturnRingMaterial} />
                   </mesh>
@@ -1141,6 +1255,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                           onPlanetClick(system, -1); // Use -1 to indicate the moon
                         }
                       }}
+                      renderOrder={2}
                     >
                       <sphereGeometry args={[1, 32, 32]} />
                       <primitive object={moonShaderMaterial} />

@@ -486,16 +486,16 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
           </mesh>
           
           {/* Gradient glow effect for textured stars */}
-          <Billboard renderOrder={2}>
+          <Billboard renderOrder={1.5}>
             {/* Outer halo */}
-            <mesh scale={[starRadius * (props.isFiltered ? 5.0 : 7.0), starRadius * (props.isFiltered ? 5.0 : 7.0), 1]} renderOrder={2}>
+            <mesh scale={[starRadius * (props.isFiltered ? 5.0 : 7.0), starRadius * (props.isFiltered ? 5.0 : 7.0), 1]} renderOrder={1.5}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
                 transparent={true}
                 opacity={props.isFiltered ? 0.1 : 1.8} /* Moderate value between 0.05 and 0.15 */
                 depthWrite={false}
-                depthTest={false}
+                depthTest={true}
                 side={THREE.DoubleSide}
                 map={glowTexture}
                 alphaMap={glowTexture}
@@ -503,14 +503,14 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
               />
             </mesh>
             {/* Inner halo */}
-            <mesh scale={[starRadius * (props.isFiltered ? 2.4 : 3.5), starRadius * (props.isFiltered ? 2.4 : 3.5), 1]} renderOrder={3}>
+            <mesh scale={[starRadius * (props.isFiltered ? 2.4 : 3.5), starRadius * (props.isFiltered ? 2.4 : 3.5), 1]} renderOrder={1.5}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
                 transparent={true}
                 opacity={props.isFiltered ? 0.1 : 3.5} /* Moderate value between 0.05 and 0.15 */
                 depthWrite={false}
-                depthTest={false}
+                depthTest={true}
                 side={THREE.DoubleSide}
                 map={glowTexture}
                 alphaMap={glowTexture}
@@ -539,14 +539,15 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
               color={color.clone().multiplyScalar(props.isFiltered ? 0.15 : 1.2)} /* Moderate value between 0.05 and 0.25 */
               transparent={props.isFiltered}
               opacity={props.isFiltered ? 0.12 : 1} /* Moderate value between 0.05 and 0.2 */
-              depthWrite={!props.isFiltered}
+              depthWrite={true}
+              depthTest={true}
             />
           </mesh>
           
           {/* Gradient glow effect */}
-          <Billboard renderOrder={2}>
-            {/* Outer halo - larger for non-filtered stars */}
-            <mesh scale={[haloRadius * (props.isFiltered ? 12.0 : 20.0), haloRadius * (props.isFiltered ? 12.0 : 20.0), 1]} renderOrder={2}>
+          <Billboard renderOrder={1.5}>
+            {/* Outer halo */}
+            <mesh scale={[haloRadius * (props.isFiltered ? 12.0 : 20.0), haloRadius * (props.isFiltered ? 12.0 : 20.0), 1]} renderOrder={1.5}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
@@ -560,8 +561,8 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
                 blending={THREE.AdditiveBlending}
               />
             </mesh>
-            {/* Inner halo - larger for non-filtered stars */}
-            <mesh scale={[haloRadius * (props.isFiltered ? 3.0 : 6.0), haloRadius * (props.isFiltered ? 3.0 : 6.0), 1]} renderOrder={3}>
+            {/* Inner halo */}
+            <mesh scale={[haloRadius * (props.isFiltered ? 3.0 : 6.0), haloRadius * (props.isFiltered ? 3.0 : 6.0), 1]} renderOrder={1.5}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
