@@ -8,7 +8,13 @@ interface ColorLegendProps {
 }
 
 export function ColorLegend({ field, min, max }: ColorLegendProps) {
-  const colors = VIRIDIS_COLORS.map(color => color.getStyle());
+  // Get the colors in the correct order
+  let colors = VIRIDIS_COLORS.map(color => color.getStyle());
+  
+  // Reverse the colors for distance to match the inverted scale in getViridisColor
+  if (field === 'Distance (parsecs)') {
+    colors = [...colors].reverse();
+  }
   
   return (
     <div style={{

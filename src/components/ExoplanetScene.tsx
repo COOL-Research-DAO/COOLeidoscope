@@ -64,6 +64,7 @@ interface SceneProps {
 export interface SceneHandle {
   focusOnStar: (system: ExoplanetSystem) => void;
   focusOnPlanet: (system: ExoplanetSystem, planetIndex: number) => void;
+  resetView: () => void;
 }
 
 // Constants for habitable zone calculations
@@ -214,10 +215,36 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
   // Add state for tracking indicator
   const [showTrackingIndicator, setShowTrackingIndicator] = useState(false);
 
-  // Expose functions via ref
+  // Add function to reset the view to initial state
+  const resetView = useCallback(() => {
+    // Reset universe offset
+    setUniverseOffset(new THREE.Vector3(0, 0, 0));
+    universeOffsetRef.current.set(0, 0, 0);
+    
+    // Reset camera position
+    camera.position.set(0, 20, 50);
+    camera.lookAt(0, 0, 0);
+    
+    // Reset controls
+    if (controlsRef.current) {
+      controlsRef.current.reset();
+      controlsRef.current.update();
+    }
+    
+    // Clear any focused object
+    setFocusedPlanet(null);
+    setTrackingEnabled(true);
+    
+    // Clear selected objects
+    setCompactSystem(null);
+    setSelectedSystem(null);
+  }, [camera, setUniverseOffset, setFocusedPlanet, setTrackingEnabled, setCompactSystem, setSelectedSystem]);
+
+  // Expose methods to parent component
   useImperativeHandle(ref, () => ({
     focusOnStar,
-    focusOnPlanet
+    focusOnPlanet,
+    resetView
   }));
 
   // Sync universeOffset state with ref for smoother animations
@@ -320,7 +347,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
         return orbitRadius;
       })
     );
-    const finalZoomDistance = maxOrbitRadius * 4;
+    const finalZoomDistance = maxOrbitRadius * 2;
     
     // Start animation
     let startTime = performance.now();
@@ -931,9 +958,9 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sceneRef = useRef<SceneHandle>(null);
   const [lastSearchedSystem, setLastSearchedSystem] = useState<string | null>(null);
-  const [sizeScale, setSizeScale] = useState(1);
+  const [sizeScale, setSizeScale] = useState(1000);
   const sizeSliderRef = useRef<HTMLInputElement>(null);
-  const currentValueRef = useRef(1);
+  const currentValueRef = useRef(1000);
   const [isPaused, setIsPaused] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<FilterOption[]>([]);
@@ -989,6 +1016,8 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       rafId = requestAnimationFrame(() => {
         const rect = slider.getBoundingClientRect();
         const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        
+        // Calculate value directly: left = 1 (min), right = 1000 (max)
         const value = Math.round(1 + ratio * 999); // min=1, max=1000
         
         // Update DOM value immediately
@@ -1367,10 +1396,40 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           )}
         </div>
       </div>
+      {/* Home button - moved to top left corner */}
+      <button
+        onClick={() => {
+          if (sceneRef.current) {
+            sceneRef.current.resetView();
+          }
+        }}
+        style={{
+          position: 'fixed',
+          top: '1rem',
+          left: '1rem',
+          padding: '8px',
+          width: '40px',
+          height: '40px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'rgba(10, 12, 16, 0.95)',
+          border: '1px solid #666',
+          borderRadius: '4px',
+          color: 'white',
+          cursor: 'pointer',
+          zIndex: 1000,
+          fontSize: '22px',
+        }}
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2.5L2 11.5H5V20.5H19V11.5H22L12 2.5Z" fill="white"/>
+        </svg>
+      </button>
       {showHelp && (
         <div style={{
           position: 'fixed',
-          top: '1rem',
+          top: '3.5rem', // Moved down to accommodate home button
           left: '1rem',
           backgroundColor: 'rgba(0, 0, 0, 0.7)',
           padding: '1rem',
@@ -1384,8 +1443,8 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
             <li>Right-click + drag to rotate</li>
             <li>Scroll to zoom</li>
             <li>Click on stars to see detailed info</li>
-            <li>Click on planets to see detailed info</li>
-            <li>Double-click on stars to focus and see quick info</li>
+            <li>Click on planets to see detailed info and display knowledge graphs</li>
+            <li>Double-click on stars and planets to focus</li>
             <li>Space bar to pause/resume planet motion</li>
             <li>Use search bar to find stars</li>
           </ul>

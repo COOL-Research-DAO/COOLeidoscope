@@ -320,7 +320,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
   
   // Calculate scale factor based on slider (0 to 1)
   const sliderRange = props.systemMaxScale - 1;
-  const t = Math.max(0, Math.min(1, (props.sizeScale - 1) / sliderRange));
+  const t = Math.max(0, Math.min(1, 1 - (props.sizeScale - 1) / sliderRange));
   
   // Final radius combines real size and maximum allowed scale, capped by closest perihelion
   const starRadius = useMemo(() => {
@@ -363,10 +363,10 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
     
     if (colorByField === 'planetCount') {
       const count = system.planets.length;
-      return getViridisColor(count, range?.min || 1, range?.max || 10, false);
+      return getViridisColor(count, range?.min || 1, range?.max || 10, false, colorByField);
     }
 
-    return getViridisColor(colorByValue, range?.min || 0, range?.max || 1, true);
+    return getViridisColor(colorByValue, range?.min || 0, range?.max || 1, true, colorByField);
   }, [colorByField, colorByValue, props.activeFilters, system.planets.length, props.isFiltered]);
 
   // Handle star rotation - only at extremely close distances

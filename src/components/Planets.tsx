@@ -169,7 +169,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   const getMoonOrbitRadius = () => {
     const baseOrbitRadius = (0.00256 / 206265); // Convert AU to parsecs
     const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1;
-    const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 0;
+    const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, 1 - (sizeScale - 1) / sliderRange)) : 0;
     // Scale up to Earth-Venus gap
     const maxOrbitRadius = getEarthVenusGap();
     return baseOrbitRadius * (1 + t * (maxOrbitRadius / baseOrbitRadius - 1));
@@ -195,7 +195,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     
     // Apply the same scaling as planets
     const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1;
-    const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 0;
+    const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, 1 - (sizeScale - 1) / sliderRange)) : 0;
     const maxScale = 1_000_000; // Same cap as used for planets
     const scaledMoonOrbitRadius = moonOrbitRadius * (1 + t * maxScale);
     
@@ -770,12 +770,15 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
         // Cap the maximum scale factor
         const cappedMaxScale = Math.min(planetMaxScaleFactor, 1_000_000);
 
-        // Calculate slider influence
+        // Calculate slider influence (t factor: 0 to 1)
         const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1;
-        const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 0;
+        const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, 1 - (sizeScale - 1) / sliderRange)) : 0;
         
-        // Scale up from real size to maximum allowed size
-        return realSizeInParsecs * (1 + t * (cappedMaxScale - 1));
+        // Invert the t factor so 0 = maximum size, 1 = real size
+        const invertedT = 1 - t;
+
+        // Final size = real size when invertedT=0 (slider right), scaled up to max allowed size when invertedT=1 (slider left)
+        return realSizeInParsecs * (1 + invertedT * (cappedMaxScale - 1));
       });
       return { planetSizes: sizes, cappedSystemPlanetMaxScale: 1_000_000 };
     }
@@ -817,11 +820,14 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
       const realSizeInParsecs = realSizeAU / 206265; // Real physical size in parsecs
 
       // Calculate slider influence (t factor: 0 to 1)
-      const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1; // Prevent division by zero/negative range
-      const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 0;
+      const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1;
+      const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, 1 - (sizeScale - 1) / sliderRange)) : 0;
+      
+      // Invert the t factor so 0 = maximum size, 1 = real size
+      const invertedT = 1 - t;
 
-      // Final size = real size when t=0, scaled up to max allowed size when t=1
-      return realSizeInParsecs * (1 + t * (cappedSystemPlanetMaxScale - 1));
+      // Final size = real size when invertedT=0 (slider right), scaled up to max allowed size when invertedT=1 (slider left)
+      return realSizeInParsecs * (1 + invertedT * (cappedSystemPlanetMaxScale - 1));
     });
 
     return { planetSizes: sizes, cappedSystemPlanetMaxScale };
