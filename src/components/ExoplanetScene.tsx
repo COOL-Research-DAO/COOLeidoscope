@@ -1559,12 +1559,12 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
         key={isPaused ? 'paused' : 'playing'}
         style={{
           position: 'fixed',
-          bottom: '5%',  // Center vertically
+          bottom: '5%',  
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          backgroundColor: 'transparent',
           color: 'white',
-          padding: '12px 16px',
+          padding: '0',
           borderRadius: '4px',
           fontFamily: 'monospace',
           fontSize: '56px',

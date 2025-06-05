@@ -349,7 +349,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   // Determine which planets should show detailed textures
   useEffect(() => {
     // Calculate distance to each planet and determine if it should show texture
-    const detailedThreshold = 0.00003; // parsecs, smaller value to only load textures for very nearby planets
+    const detailedThreshold = 0.0002; // parsecs, smaller value to only load textures for very nearby planets
     
     // Don't recalculate on every tiny camera movement
     if (lastCameraDistanceRef.current !== null && 

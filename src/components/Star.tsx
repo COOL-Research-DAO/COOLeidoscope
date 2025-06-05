@@ -325,7 +325,9 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
   // Final radius combines real size and maximum allowed scale, capped by closest perihelion
   const starRadius = useMemo(() => {
     // Real physical size with scale slider
-    const scaledRealSize = realSizeInParsecs * (1 + t * (maxStarSize / realSizeInParsecs - 1));
+    // Note: t is already inverted (t=0 when sizeScale=1000, t=1 when sizeScale=1)
+    // So we need to use (1-t) to match the expected behavior
+    const scaledRealSize = realSizeInParsecs * (1 + (1-t) * (maxStarSize / realSizeInParsecs - 1));
     
     // Base apparent size we want to maintain
     const baseApparentSize = 0.002; // Keep stars visible at large distances
