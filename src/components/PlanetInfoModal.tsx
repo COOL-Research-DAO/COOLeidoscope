@@ -163,6 +163,19 @@ const modalStyles = `
   .category-button:hover {
     background-color: rgb(68, 68, 68) !important;
   }
+  .show-more-button {
+    background-color: rgb(51, 51, 51) !important;
+    color: white !important;
+    padding: 0.5rem 1rem !important;
+    border-radius: 0.25rem !important;
+    transition: background-color 0.2s !important;
+    border: none !important;
+    cursor: pointer !important;
+    margin-top: 0.5rem !important;
+  }
+  .show-more-button:hover {
+    background-color: rgb(68, 68, 68) !important;
+  }
   .expand-button {
     width: 24px !important;
     height: 24px !important;
@@ -195,10 +208,10 @@ const modalStyles = `
     background-color: #1D4ED8 !important;
   }
   @media (prefers-color-scheme: light) {
-    .category-button {
+    .category-button, .show-more-button {
       background-color: rgb(51, 51, 51) !important;
     }
-    .category-button:hover {
+    .category-button:hover, .show-more-button:hover {
       background-color: rgb(68, 68, 68) !important;
     }
     .expand-button, .view-graph-button {
@@ -604,8 +617,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
                         {!expandedEntries['observational_data'] && (
                           <button
                             onClick={() => toggleEntryExpansion('observational_data', 'observational_data')}
-                            className="text-blue-400 hover:text-blue-300 mt-2"
-                            style={{ color: '#60A5FA !important' }}
+                            className="show-more-button"
                           >
                             Show More
                           </button>
@@ -675,8 +687,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
                         {!expandedEntries['public_engagement'] && (
                           <button
                             onClick={() => toggleEntryExpansion('public_engagement', 'public_engagement')}
-                            className="text-blue-400 hover:text-blue-300 mt-2"
-                            style={{ color: '#60A5FA !important' }}
+                            className="show-more-button"
                           >
                             Show More
                           </button>
