@@ -1,6 +1,6 @@
 # COOLeidoscope
 
-An interactive 3D visualization of exoplanetary systems using Three.js and React.
+An interactive 3D visualization using Three.js and React of exoplanetary systems and their associated data sources, connecting astronomical data, scientific research, publications, authors, public outreach content, art, and more. COOLeidoscope is a project developed by COOL Research Labs in collaboration with the COOL Research DAO community.
 
 ## About
 
@@ -10,7 +10,7 @@ COOLeidoscope is an application for exploring exoplanetary systems in 3D. It vis
 - Filter systems based on various properties (star temperature, mass, planetary count, etc.)
 - Interact with the 3D visualization by zooming, rotating, and selecting objects
 - View detailed information about stars and planets
-- Build knowledge graphs that connect astronomical data, researchers, research projects, outreach content, and more
+- Build knowledge graphs that connect astronomical data, researchers, research projects, public outreach content, and more
 
 ## Technologies
 
