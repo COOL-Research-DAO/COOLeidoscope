@@ -12,6 +12,12 @@ COOLeidoscope is an application for exploring exoplanetary systems in 3D. It vis
 - View detailed information about stars and planets
 - Build knowledge graphs that connect astronomical data, researchers, research projects, public outreach content, and more
 
+## License
+
+Copyright (c) 2025 COOL Research Labs.
+Contributors: Mélanie Chevance, Diederik Kruijssen, Steve Longmore, Anna McLeod.
+License: MIT License - see the [LICENSE.md](./LICENSE.md) file for details.
+
 ## Technologies
 
 - React
