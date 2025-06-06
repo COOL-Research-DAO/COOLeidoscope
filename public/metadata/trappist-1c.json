@@ -43,7 +43,7 @@
       {
         "instrument": "JWST NIRSpec",
         "data_product": "Transmission spectra (2023)",
-        "url": "https://www.nature.com/articles/s41550-023-02060-4"
+        "url": "https://jwst.esac.esa.int/archive/?ACTION=SHOWPLANE&ID=008ac1b8-1a2a-470c-be9c-d533fb03287d,5929a743-2948-4acb-8c26-f05a96ce10ee"
       }
     ]
   },
@@ -79,9 +79,9 @@
     ],
     "videos": [
       {
-        "title": "TRAPPIST-1 System: A Deeper Look with JWST",
+        "title": "Is there hope for JWST and the TRAPPIST-1 planets after all?",
         "platform": "YouTube",
-        "url": "https://www.youtube.com/watch?v=5W4i7tAX5no"
+        "url": "https://www.youtube.com/watch?v=EegNfVwEBoY&t=262s"
       }
     ],
     "3d_models": [
@@ -101,14 +101,14 @@
     ],
     "popular_articles": [
       {
-        "title": "JWST Reveals More Clues about TRAPPIST-1c",
+        "title": "Webb Rules Out Thick Carbon Dioxide Atmosphere for Rocky Exoplanet",
         "source": "NASA",
-        "url": "https://www.nasa.gov/feature/jpl/jwst-helps-uncover-atmospheric-secrets-of-trappist-1c"
+        "url": "https://www.nasa.gov/universe/webb-rules-out-thick-carbon-dioxide-atmosphere-for-rocky-exoplanet/"
       },
       {
-        "title": "TRAPPIST-1c and the Search for Thin Atmospheres",
-        "source": "ScienceAlert",
-        "url": "https://www.sciencealert.com/jwst-shows-trappist-1c-may-be-bare-rock"
+        "title": "James Webb Space Telescope spies on rocky TRAPPIST-1 exoplanet, finds bad news for life",
+        "source": "space.com",
+        "url": "https://www.space.com/trappist-1-exoplanet-lacks-atmosphere-james-webb-space-telescope"
       }
     ],
     "community_links": [
