@@ -21,8 +21,40 @@ interface RelationshipGraphProps {
 
 type DragEvent = d3.D3DragEvent<SVGGElement, GraphNode, GraphNode>;
 
+// Add this style block at the top of the file, after imports
+const modalStyles = `
+  .modal-close-button {
+    background-color: white !important;
+    color: black !important;
+    width: 24px !important;
+    height: 24px !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 16px !important;
+    padding: 0 !important;
+    border: none !important;
+    cursor: pointer !important;
+    transition: opacity 0.2s !important;
+  }
+  .modal-close-button:hover {
+    opacity: 0.8 !important;
+  }
+`;
+
 export function RelationshipGraph({ metadata, category, onClose }: RelationshipGraphProps) {
   const svgRef = useRef<SVGSVGElement>(null);
+
+  // Add style element to inject our CSS
+  useEffect(() => {
+    const styleElement = document.createElement('style');
+    styleElement.textContent = modalStyles;
+    document.head.appendChild(styleElement);
+    return () => {
+      document.head.removeChild(styleElement);
+    };
+  }, []);
 
   useEffect(() => {
     if (!svgRef.current || !metadata || !category) return;
@@ -143,7 +175,7 @@ export function RelationshipGraph({ metadata, category, onClose }: RelationshipG
           </h3>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white"
+            className="modal-close-button"
           >
             ✕
           </button>
