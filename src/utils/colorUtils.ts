@@ -53,7 +53,7 @@ export const VIRIDIS_COLORS = [
   new THREE.Color('rgb(193, 212, 33)')  // Yellow
 ];
 
-export function getViridisColor(value: number | null | undefined, minValue: number, maxValue: number, useLog = true): THREE.Color {
+export function getViridisColor(value: number | null | undefined, minValue: number, maxValue: number, useLog = true, fieldName?: string): THREE.Color {
   // Handle unknown values
   if (value === null || value === undefined || isNaN(value)) {
     return new THREE.Color(0xFFFFFF); // White for unknown values
@@ -69,6 +69,11 @@ export function getViridisColor(value: number | null | undefined, minValue: numb
     t = (logValue - logMin) / (logMax - logMin);
   } else {
     t = (value - minValue) / (maxValue - minValue);
+  }
+  
+  // Invert the scale for distance so nearby (small values) = yellow, far (large values) = purple
+  if (fieldName === 'sy_dist') {
+    t = 1 - t;
   }
   
   t = Math.max(0, Math.min(1, t));

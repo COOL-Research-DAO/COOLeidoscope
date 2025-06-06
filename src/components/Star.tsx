@@ -149,6 +149,84 @@ const HabitableZone = memo(({ system, visible }: HabitableZoneProps) => {
 let globalStarTexture: THREE.Texture | null = null;
 let isLoadingGlobalTexture = false;
 
+// Always use GitHub repository for textures
+const BASE_PATH = 'https://raw.githubusercontent.com/COOL-Research-DAO/Database/main';
+
+// Texture path mapping
+const TEXTURE_PATHS = {
+  sun: `${BASE_PATH}/images/2k_sun.jpg`,
+  moon: `${BASE_PATH}/images/2k_moon.jpg`,
+  saturnRing: `${BASE_PATH}/images/2k_saturn_ring_alpha.png`,
+  // Planet textures - terrestrial
+  terrestrial1: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Terrestrial1.png`,
+  alpine: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Alpine.png`,
+  savannah: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Savannah.png`,
+  swamp: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Swamp.png`,
+  volcanic: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Volcanic.png`,
+  venusian: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Venusian.png`,
+  martian: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Martian.png`,
+  icy: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Icy.png`,
+  tropical: `${BASE_PATH}/images/TexturesForPlanets-Terrestrial/Tropical.png`,
+  // Planet textures - gas giants
+  gaseous1: `${BASE_PATH}/images/TexturesForPlanets-GasGiant/Gaseous1.png`,
+  gaseous2: `${BASE_PATH}/images/TexturesForPlanets-GasGiant/Gaseous2.png`,
+  gaseous3: `${BASE_PATH}/images/TexturesForPlanets-GasGiant/Gaseous3.png`,
+  gaseous4: `${BASE_PATH}/images/TexturesForPlanets-GasGiant/Gaseous4.png`,
+  // Named planets
+  mercury: `${BASE_PATH}/images/2k_mercury.jpg`,
+  venus: `${BASE_PATH}/images/2k_venus_atmosphere.jpg`,
+  earth: `${BASE_PATH}/images/2k_earth_daymap.jpg`,
+  mars: `${BASE_PATH}/images/2k_mars.jpg`,
+  jupiter: `${BASE_PATH}/images/2k_jupiter.jpg`,
+  saturn: `${BASE_PATH}/images/2k_saturn.jpg`,
+  uranus: `${BASE_PATH}/images/2k_uranus.jpg`,
+  neptune: `${BASE_PATH}/images/2k_neptune.jpg`,
+};
+
+// Helper function to get texture URL for a planet
+const getPlanetTextureUrl = (planetName: string): string => {
+  const normalizedName = planetName.toLowerCase().replace(/[^a-z0-9-]/g, '');
+  
+  // Check if we have a specific texture for this planet
+  if (normalizedName.includes('mercury')) return TEXTURE_PATHS.mercury;
+  if (normalizedName.includes('venus')) return TEXTURE_PATHS.venus;
+  if (normalizedName.includes('earth')) return TEXTURE_PATHS.earth;
+  if (normalizedName.includes('mars')) return TEXTURE_PATHS.mars;
+  if (normalizedName.includes('jupiter')) return TEXTURE_PATHS.jupiter;
+  if (normalizedName.includes('saturn')) return TEXTURE_PATHS.saturn;
+  if (normalizedName.includes('uranus')) return TEXTURE_PATHS.uranus;
+  if (normalizedName.includes('neptune')) return TEXTURE_PATHS.neptune;
+  
+  // Return null if no match found
+  return '';
+};
+
+// Helper function to get a random texture path based on planet type
+const getRandomTexturePath = (isGasGiant: boolean): string => {
+  if (isGasGiant) {
+    const gasGiantTextures = [
+      TEXTURE_PATHS.gaseous1,
+      TEXTURE_PATHS.gaseous2,
+      TEXTURE_PATHS.gaseous3,
+      TEXTURE_PATHS.gaseous4
+    ];
+    return gasGiantTextures[Math.floor(Math.random() * gasGiantTextures.length)];
+  } else {
+    const terrestrialTextures = [
+      TEXTURE_PATHS.terrestrial1,
+      TEXTURE_PATHS.alpine,
+      TEXTURE_PATHS.savannah,
+      TEXTURE_PATHS.swamp,
+      TEXTURE_PATHS.volcanic,
+      TEXTURE_PATHS.venusian,
+      TEXTURE_PATHS.martian,
+      TEXTURE_PATHS.icy,
+      TEXTURE_PATHS.tropical
+    ];
+    return terrestrialTextures[Math.floor(Math.random() * terrestrialTextures.length)];
+  }
+};
+
 // Create a radial gradient texture for the glow
 const glowTexture = (() => {
   const canvas = document.createElement('canvas');
@@ -242,12 +320,14 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
   
   // Calculate scale factor based on slider (0 to 1)
   const sliderRange = props.systemMaxScale - 1;
-  const t = Math.max(0, Math.min(1, (props.sizeScale - 1) / sliderRange));
+  const t = Math.max(0, Math.min(1, 1 - (props.sizeScale - 1) / sliderRange));
   
   // Final radius combines real size and maximum allowed scale, capped by closest perihelion
   const starRadius = useMemo(() => {
     // Real physical size with scale slider
-    const scaledRealSize = realSizeInParsecs * (1 + t * (maxStarSize / realSizeInParsecs - 1));
+    // Note: t is already inverted (t=0 when sizeScale=1000, t=1 when sizeScale=1)
+    // So we need to use (1-t) to match the expected behavior
+    const scaledRealSize = realSizeInParsecs * (1 + (1-t) * (maxStarSize / realSizeInParsecs - 1));
     
     // Base apparent size we want to maintain
     const baseApparentSize = 0.002; // Keep stars visible at large distances
@@ -269,7 +349,10 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
   // Calculate color (used for point light and fallback)
   const color = useMemo(() => {
     if (!colorByField) {
-      return new THREE.Color(0xffff4f); // Default bright yellow when no filter
+      // Default color is now slightly greenish for non-filtered stars (habitable planets)
+      return props.isFiltered ? 
+        new THREE.Color(0xffcc00) : // More vibrant golden yellow for filtered stars
+        new THREE.Color(0xffee00);  // Bright yellow for stars with habitable planets (non-filtered)
     }
     
     // Return white for null or NaN values when filter is applied
@@ -282,11 +365,11 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
     
     if (colorByField === 'planetCount') {
       const count = system.planets.length;
-      return getViridisColor(count, range?.min || 1, range?.max || 10, false);
+      return getViridisColor(count, range?.min || 1, range?.max || 10, false, colorByField);
     }
 
-    return getViridisColor(colorByValue, range?.min || 0, range?.max || 1, true);
-  }, [colorByField, colorByValue, props.activeFilters, system.planets.length]);
+    return getViridisColor(colorByValue, range?.min || 0, range?.max || 1, true, colorByField);
+  }, [colorByField, colorByValue, props.activeFilters, system.planets.length, props.isFiltered]);
 
   // Handle star rotation - only at extremely close distances
   useFrame((state, delta) => {
@@ -312,7 +395,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
       
       const textureLoader = new THREE.TextureLoader();
       textureLoader.load(
-        '/images/2k_sun.jpg',
+        TEXTURE_PATHS.sun,
         (texture) => {
           texture.flipY = false;
           texture.wrapS = THREE.RepeatWrapping;
@@ -341,8 +424,8 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
   const pointLightElement = showImage && (
     <pointLight
       color={color}
-      intensity={2}
-      distance={50}
+      intensity={props.isFiltered ? 2 : 3} // Increase intensity for non-filtered stars
+      distance={props.isFiltered ? 50 : 70} // Increase light distance for non-filtered stars
       decay={2}
     />
   );
@@ -374,7 +457,7 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
             <meshBasicMaterial
               color={color}
               transparent={props.isFiltered}
-              opacity={props.isFiltered ? 0.1 : 1}
+              opacity={props.isFiltered ? 0.12 : 1} // Moderate value between 0.05 and 0.2
             />
           </mesh>
         }>
@@ -392,9 +475,9 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
             <sphereGeometry args={[1, 64, 64]} /> {/* Higher resolution geometry */}
             <meshBasicMaterial
               map={starTexture || globalStarTexture}
-              color={new THREE.Color(0xFFFFFF).multiplyScalar(props.isFiltered ? 0.55 : 2.5)} /* Adjust brightness based on filter */
+              color={new THREE.Color(0xFFFFFF).multiplyScalar(props.isFiltered ? 0.45 : 3.0)} /* Moderate value between 0.35 and 0.6 */
               transparent={props.isFiltered}
-              opacity={props.isFiltered ? 0.1 : 1}
+              opacity={props.isFiltered ? 0.12 : 1} /* Moderate value between 0.05 and 0.2 */
               side={THREE.DoubleSide}
               alphaTest={0.1} /* Prevent z-fighting */
               depthWrite={true} /* Ensure proper depth sorting */
@@ -403,16 +486,16 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
           </mesh>
           
           {/* Gradient glow effect for textured stars */}
-          <Billboard renderOrder={2}>
+          <Billboard renderOrder={1.5}>
             {/* Outer halo */}
-            <mesh scale={[starRadius * 5.0, starRadius * 5.0, 1]} renderOrder={2}>
+            <mesh scale={[starRadius * (props.isFiltered ? 5.0 : 7.0), starRadius * (props.isFiltered ? 5.0 : 7.0), 1]} renderOrder={1.5}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
                 transparent={true}
-                opacity={props.isFiltered ? 0.09 : 1.5}
+                opacity={props.isFiltered ? 0.1 : 1.8} /* Moderate value between 0.05 and 0.15 */
                 depthWrite={false}
-                depthTest={false}
+                depthTest={true}
                 side={THREE.DoubleSide}
                 map={glowTexture}
                 alphaMap={glowTexture}
@@ -420,14 +503,14 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
               />
             </mesh>
             {/* Inner halo */}
-            <mesh scale={[starRadius * 2.4, starRadius * 2.4, 1]} renderOrder={3}>
+            <mesh scale={[starRadius * (props.isFiltered ? 2.4 : 3.5), starRadius * (props.isFiltered ? 2.4 : 3.5), 1]} renderOrder={1.5}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
                 transparent={true}
-                opacity={props.isFiltered ? 0.09 : 3.0}
+                opacity={props.isFiltered ? 0.1 : 3.5} /* Moderate value between 0.05 and 0.15 */
                 depthWrite={false}
-                depthTest={false}
+                depthTest={true}
                 side={THREE.DoubleSide}
                 map={glowTexture}
                 alphaMap={glowTexture}
@@ -453,22 +536,23 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
           >
             <sphereGeometry args={[1, 16, 16]} />
             <meshBasicMaterial
-              color={color.clone().multiplyScalar(props.isFiltered ? 0.1 : 1)}
+              color={color.clone().multiplyScalar(props.isFiltered ? 0.15 : 1.2)} /* Moderate value between 0.05 and 0.25 */
               transparent={props.isFiltered}
-              opacity={props.isFiltered ? 0.1 : 1}
-              depthWrite={!props.isFiltered}
+              opacity={props.isFiltered ? 0.12 : 1} /* Moderate value between 0.05 and 0.2 */
+              depthWrite={true}
+              depthTest={true}
             />
           </mesh>
           
           {/* Gradient glow effect */}
-          <Billboard renderOrder={2}>
+          <Billboard renderOrder={1.5}>
             {/* Outer halo */}
-            <mesh scale={[haloRadius * 16.0, haloRadius * 16.0, 1]} renderOrder={2}>
+            <mesh scale={[haloRadius * (props.isFiltered ? 12.0 : 20.0), haloRadius * (props.isFiltered ? 12.0 : 20.0), 1]} renderOrder={1.5}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
                 transparent={true}
-                opacity={props.isFiltered ? 0.09 : 0.3}
+                opacity={props.isFiltered ? 0.06 : 0.45} /* Moderate value between 0.03 and 0.1 */
                 depthWrite={false}
                 depthTest={false}
                 side={THREE.DoubleSide}
@@ -478,12 +562,12 @@ const Star = memo(function Star({ system, colorByField, colorByValue, ...props }
               />
             </mesh>
             {/* Inner halo */}
-            <mesh scale={[haloRadius * 4.0, haloRadius * 4.0, 1]} renderOrder={3}>
+            <mesh scale={[haloRadius * (props.isFiltered ? 3.0 : 6.0), haloRadius * (props.isFiltered ? 3.0 : 6.0), 1]} renderOrder={1.5}>
               <planeGeometry args={[1, 1]} />
               <meshBasicMaterial
                 color={color}
                 transparent={true}
-                opacity={props.isFiltered ? 0.09 : 0.5}
+                opacity={props.isFiltered ? 0.06 : 0.7} /* Moderate value between 0.03 and 0.1 */
                 depthWrite={false}
                 depthTest={false}
                 side={THREE.DoubleSide}

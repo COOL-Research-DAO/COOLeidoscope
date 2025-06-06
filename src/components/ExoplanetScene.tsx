@@ -64,6 +64,7 @@ interface SceneProps {
 export interface SceneHandle {
   focusOnStar: (system: ExoplanetSystem) => void;
   focusOnPlanet: (system: ExoplanetSystem, planetIndex: number) => void;
+  resetView: () => void;
 }
 
 // Constants for habitable zone calculations
@@ -214,10 +215,36 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
   // Add state for tracking indicator
   const [showTrackingIndicator, setShowTrackingIndicator] = useState(false);
 
-  // Expose functions via ref
+  // Add function to reset the view to initial state
+  const resetView = useCallback(() => {
+    // Reset universe offset
+    setUniverseOffset(new THREE.Vector3(0, 0, 0));
+    universeOffsetRef.current.set(0, 0, 0);
+    
+    // Reset camera position
+    camera.position.set(0, 20, 50);
+    camera.lookAt(0, 0, 0);
+    
+    // Reset controls
+    if (controlsRef.current) {
+      controlsRef.current.reset();
+      controlsRef.current.update();
+    }
+    
+    // Clear any focused object
+    setFocusedPlanet(null);
+    setTrackingEnabled(true);
+    
+    // Clear selected objects
+    setCompactSystem(null);
+    setSelectedSystem(null);
+  }, [camera, setUniverseOffset, setFocusedPlanet, setTrackingEnabled, setCompactSystem, setSelectedSystem]);
+
+  // Expose methods to parent component
   useImperativeHandle(ref, () => ({
     focusOnStar,
-    focusOnPlanet
+    focusOnPlanet,
+    resetView
   }));
 
   // Sync universeOffset state with ref for smoother animations
@@ -320,7 +347,7 @@ const Scene = forwardRef<SceneHandle, SceneProps>(({
         return orbitRadius;
       })
     );
-    const finalZoomDistance = maxOrbitRadius * 4;
+    const finalZoomDistance = maxOrbitRadius * 2;
     
     // Start animation
     let startTime = performance.now();
@@ -927,12 +954,13 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<ExoplanetSystem[]>([]);
   const [systems, setSystems] = useState<ExoplanetSystem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sceneRef = useRef<SceneHandle>(null);
   const [lastSearchedSystem, setLastSearchedSystem] = useState<string | null>(null);
-  const [sizeScale, setSizeScale] = useState(1);
+  const [sizeScale, setSizeScale] = useState(1000);
   const sizeSliderRef = useRef<HTMLInputElement>(null);
-  const currentValueRef = useRef(1);
+  const currentValueRef = useRef(1000);
   const [isPaused, setIsPaused] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<FilterOption[]>([]);
@@ -988,6 +1016,8 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       rafId = requestAnimationFrame(() => {
         const rect = slider.getBoundingClientRect();
         const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        
+        // Calculate value directly: left = 1 (min), right = 1000 (max)
         const value = Math.round(1 + ratio * 999); // min=1, max=1000
         
         // Update DOM value immediately
@@ -1039,9 +1069,14 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
 
   useEffect(() => {
     console.log('Loading exoplanet data...');
+    setIsLoading(true);
     loadExoplanetData().then(data => {
       console.log('Loaded systems:', data.length);
       setSystems(data);
+      // Add a delay before hiding the loading message to ensure stars have time to render
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 1500); // 2 second delay
     });
   }, []);
 
@@ -1061,8 +1096,17 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       console.log('Number of systems:', systems.length);
       
       const searchLower = searchQuery.toLowerCase();
+      
+      // Handle special case for "Solar System" alias
+      const isSolarSystemSearch = searchLower.includes('solar') || searchLower === 'sun';
+      
       const matches = systems
         .filter(system => {
+          // Special case for Solar System
+          if (isSolarSystemSearch && system.hostname === 'Sun') {
+            return true;
+          }
+          
           const hostnameMatch = system.hostname.toLowerCase().includes(searchLower);
           const planetMatch = system.planets.some(planet => 
             planet.pl_name?.toLowerCase().includes(searchLower)
@@ -1070,6 +1114,12 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           return hostnameMatch || planetMatch;
         })
         .sort((a, b) => {
+          // Always put Sun first if searching for Solar System
+          if (isSolarSystemSearch) {
+            if (a.hostname === 'Sun') return -1;
+            if (b.hostname === 'Sun') return 1;
+          }
+          
           const aName = a.hostname.toLowerCase();
           const bName = b.hostname.toLowerCase();
           // Exact matches first
@@ -1101,8 +1151,16 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       // Normalize search query: convert to lowercase and remove special characters except hyphens
       const searchNormalized = searchQuery.toLowerCase().replace(/[^a-z0-9-]/g, '');
       
+      // Handle special case for "Solar System" alias
+      const isSolarSystemSearch = searchNormalized.includes('solar') || searchNormalized === 'sun';
+      
       // Find the system
       const foundSystem = systems.find(system => {
+        // Special case for Solar System
+        if (isSolarSystemSearch && system.hostname === 'Sun') {
+          return true;
+        }
+        
         // Normalize system hostname the same way
         const hostnameNormalized = system.hostname.toLowerCase().replace(/[^a-z0-9-]/g, '');
         
@@ -1233,17 +1291,37 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       </Canvas>
       <ScaleBar />
       
+      {/* Loading message */}
+      {isLoading && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          padding: '1rem',
+          borderRadius: '8px',
+          color: 'white',
+          zIndex: 1000,
+          fontFamily: 'Arial, sans-serif',
+          fontSize: '1.5rem',
+          textAlign: 'center'
+        }}>
+          Loading COOLeidoscope...
+        </div>
+      )}
+      
       {/* Size scale slider */}
       <div 
         style={{
           position: 'absolute',
-          bottom: '30px',
+          bottom: '55px',
           left: '350px',
           backgroundColor: 'rgba(0, 0, 0, 0.7)',
           color: 'white',
           padding: '8px',
           borderRadius: '4px',
-          width: '200px',
+          width: '280px',
           display: 'flex',
           alignItems: 'center',
           gap: '8px'
@@ -1302,6 +1380,7 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
               padding: '0.5rem',
               borderRadius: '4px',
               border: '1px solid #666',
+              height: '38px',
               backgroundColor: 'rgba(0, 0, 0, 0.7)',
               color: 'white',
               width: '300px',
@@ -1341,11 +1420,61 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           )}
         </div>
       </div>
+      {/* Home button */}
+      <button
+        onClick={() => {
+          if (sceneRef.current) {
+            sceneRef.current.resetView();
+          }
+          // Close any open panels
+          setCompactSystem(null);
+          setSelectedSystem(null);
+          setSelectedPlanet(null);
+        }}
+        style={{
+          position: 'fixed',
+          top: '1rem',
+          right: '22.6em',
+          padding: '8px',
+          width: '38px',
+          height: '38px',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          border: '1px solid #666',
+          borderRadius: '4px',
+          color: 'white',
+          cursor: 'pointer',
+          zIndex: 1000,
+        }}
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2.5L2 11.5H5V20.5H19V11.5H22L12 2.5Z" fill="white"/>
+        </svg>
+      </button>
+
+      {/* COOL Research DAO Logo */}
+      <div style={{
+        position: 'fixed',
+        top: '1rem',
+        left: '1rem',
+        zIndex: 1000,
+      }}>
+        <img 
+          src="https://raw.githubusercontent.com/COOL-Research-DAO/Database/main/logo/COOLeidoscope_logo_black.png" 
+          alt="COOLeidoscope Logo" 
+          style={{
+            height: '80px',
+            backgroundColor: 'white',
+            padding: '0px',
+            borderRadius: '0px',
+          }}
+        />
+      </div>
+
       {showHelp && (
         <div style={{
           position: 'fixed',
-          top: '1rem',
-          left: '1rem',
+          top: '6rem',
+          left: '0.5rem',
           backgroundColor: 'rgba(0, 0, 0, 0.7)',
           padding: '1rem',
           borderRadius: '8px',
@@ -1358,8 +1487,8 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
             <li>Right-click + drag to rotate</li>
             <li>Scroll to zoom</li>
             <li>Click on stars to see detailed info</li>
-            <li>Click on planets to see detailed info</li>
-            <li>Double-click on stars to focus and see quick info</li>
+            <li>Click on planets to see detailed info and display knowledge graphs</li>
+            <li>Double-click on stars and planets to focus</li>
             <li>Space bar to pause/resume planet motion</li>
             <li>Use search bar to find stars</li>
           </ul>
@@ -1391,6 +1520,8 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
             system={selectedSystem} 
             onClose={() => setSelectedSystem(null)} 
             compact={false}
+            showHabitableZones={showHabitableZones}
+            onToggleHabitableZones={() => setShowHabitableZones(!showHabitableZones)}
           />
         </div>
       )}
@@ -1409,8 +1540,8 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       )}
       <div style={{
         position: 'fixed',
-        bottom: '3rem', // Move compact info panel higher
-        left: '1rem',
+        bottom: '1rem', 
+        left: '0.5rem',
         zIndex: 999,
         maxWidth: '300px',
         backgroundColor: 'rgba(0, 0, 0, 0.8)',
@@ -1421,27 +1552,10 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           system={compactSystem} 
           onClose={() => setCompactSystem(null)} 
           compact={true}
+          showHabitableZones={showHabitableZones}
+          onToggleHabitableZones={() => setShowHabitableZones(!showHabitableZones)}
         />
       </div>
-      {/* Habitable zone toggle button */}
-      <button
-        onClick={() => setShowHabitableZones(!showHabitableZones)}
-        style={{
-          position: 'fixed',
-          bottom: '1.9rem',
-          left: '1.9rem',
-          padding: '8px',
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          border: '1px solid #666',
-          borderRadius: '4px',
-          color: 'white',
-          cursor: 'pointer',
-          zIndex: 999,
-          marginBottom: 0, // Remove margin since we moved the panel up
-        }}
-      >
-        {showHabitableZones ? 'Hide Habitable Zone' : 'Show Habitable Zone'}
-      </button>
       
       {/* Filter button */}
       <button
@@ -1451,6 +1565,8 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           top: '1rem',
           right: '320px',
           padding: '8px',
+          width: '38px',
+          height: '38px',
           backgroundColor: 'rgba(0, 0, 0, 0.7)',
           border: '1px solid #666',
           borderRadius: '4px',
@@ -1474,12 +1590,12 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
         key={isPaused ? 'paused' : 'playing'}
         style={{
           position: 'fixed',
-          bottom: '5%',  // Center vertically
+          bottom: '5%',  
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          backgroundColor: 'transparent',
           color: 'white',
-          padding: '12px 16px',
+          padding: '0',
           borderRadius: '4px',
           fontFamily: 'monospace',
           fontSize: '56px',
@@ -1489,6 +1605,35 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       >
         {isPaused ? '⏸' : '⏵'}
       </div>
+
+      {/* Footer */}
+      <div style={{
+        position: 'fixed',
+        bottom: '0.5rem',
+        left: '0',
+        width: '100%',
+        textAlign: 'center',
+        color: '#b5b5b5',
+        fontSize: '0.9rem',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '4px'
+      }}>
+        <img 
+          src="https://raw.githubusercontent.com/COOL-Research-DAO/Database/main/logo/COOLeidoscope_logo_black.png" 
+          alt="COOLeidoscope Logo" 
+          style={{
+            height: '28px',
+            backgroundColor: 'white',
+            padding: '0px',
+            borderRadius: '0px',
+          }}
+        />
+        built by COOL Research Labs 2025 | <a href="https://coolresearch.io/" target="_blank" rel="noopener noreferrer" style={{ color: '#3B82F6', textDecoration: 'underline' }}>coolresearch.io</a>
+      </div>
+      
       <style>
         {`
           @keyframes fadeOut {
