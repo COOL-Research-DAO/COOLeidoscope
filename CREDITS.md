@@ -1,12 +1,18 @@
 # Credits
 
-## Data Sources
+## COOLeidoscope Code
+Development by COOL Research Labs in collaboration with the COOL Research DAO community.
+https://coolresearch.io
+Available on GitHub: https://github.com/COOL-Research-DAO/COOLeidoscope
+License: 
+
+## COOLeidoscope Data Sources
 
 ### NASA Exoplanet Archive
 Source: https://exoplanetarchive.ipac.caltech.edu/
 The NASA Exoplanet Archive is operated by the California Institute of Technology, under contract with the National Aeronautics and Space Administration under the Exoplanet Exploration Program.
 
-## Textures
+## COOLeidoscope Textures
 
 ### Terrestrial Planet and Gas Giant Textures
 Copyright © 2015 by texturesforplanets.com
@@ -30,7 +36,7 @@ https://sos.noaa.gov/catalog/datasets/exoplanet-kepler-9b/
 Dataset Developer: SETI Institute (Gabriel Alvarado-Marin)
 Dataset Vis Developer: NASA Kepler Mission Education and Public Outreach
 
-## Libraries and Frameworks
+## COOLeidoscope Libraries and Frameworks
 
 - [React](https://reactjs.org/) - MIT License
 - [Three.js](https://threejs.org/) - MIT License
