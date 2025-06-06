@@ -146,6 +146,36 @@ const modalStyles = `
   .modal-close-button:hover {
     opacity: 0.8 !important;
   }
+  .category-button {
+    background-color: rgb(51, 51, 51) !important;
+    color: white !important;
+    width: 100% !important;
+    text-align: left !important;
+    padding: 1rem !important;
+    border-radius: 0.5rem !important;
+    transition: background-color 0.2s !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    min-width: 200px !important;
+    border: none !important;
+    cursor: pointer !important;
+  }
+  .category-button:hover {
+    background-color: rgb(68, 68, 68) !important;
+  }
+  .show-more-button {
+    background-color: rgb(51, 51, 51) !important;
+    color: white !important;
+    padding: 0.5rem 1rem !important;
+    border-radius: 0.25rem !important;
+    transition: background-color 0.2s !important;
+    border: none !important;
+    cursor: pointer !important;
+    margin-top: 0.5rem !important;
+  }
+  .show-more-button:hover {
+    background-color: rgb(68, 68, 68) !important;
+  }
   .expand-button {
     width: 24px !important;
     height: 24px !important;
@@ -178,6 +208,12 @@ const modalStyles = `
     background-color: #1D4ED8 !important;
   }
   @media (prefers-color-scheme: light) {
+    .category-button, .show-more-button {
+      background-color: rgb(51, 51, 51) !important;
+    }
+    .category-button:hover, .show-more-button:hover {
+      background-color: rgb(68, 68, 68) !important;
+    }
     .expand-button, .view-graph-button {
       background-color: #4B5563 !important;
     }
@@ -347,8 +383,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
               {/* Discovery Information */}
               <div>
                 <button 
-                  className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
-                  style={{ minWidth: '200px', width: '100%' }}
+                  className="category-button"
                   onClick={() => setExpandedCategory(expandedCategory === 'discovery' ? null : 'discovery')}
                 >
                   <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Discovery</span>
@@ -394,8 +429,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
               {/* Physical Properties */}
               <div>
                 <button 
-                  className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
-                  style={{ minWidth: '200px', width: '100%' }}
+                  className="category-button"
                   onClick={() => setExpandedCategory(expandedCategory === 'physical_properties' ? null : 'physical_properties')}
                 >
                   <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Physical Properties</span>
@@ -447,8 +481,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
               {metadata.key_people && metadata.key_people.length > 0 && (
                 <div>
                   <button 
-                    className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
-                    style={{ minWidth: '200px', width: '100%' }}
+                    className="category-button"
                     onClick={() => setExpandedCategory(expandedCategory === 'key_people' ? null : 'key_people')}
                   >
                     <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Key People</span>
@@ -510,8 +543,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
               {metadata.publications && metadata.publications.length > 0 && (
                 <div>
                   <button 
-                    className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
-                    style={{ minWidth: '200px', width: '100%' }}
+                    className="category-button"
                     onClick={() => setExpandedCategory(expandedCategory === 'publications' ? null : 'publications')}
                   >
                     <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Publications</span>
@@ -568,8 +600,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
               {metadata.observational_data && (
                 <div>
                   <button 
-                    className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
-                    style={{ minWidth: '200px', width: '100%' }}
+                    className="category-button"
                     onClick={() => setExpandedCategory(expandedCategory === 'observational_data' ? null : 'observational_data')}
                   >
                     <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Observational Data</span>
@@ -586,8 +617,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
                         {!expandedEntries['observational_data'] && (
                           <button
                             onClick={() => toggleEntryExpansion('observational_data', 'observational_data')}
-                            className="text-blue-400 hover:text-blue-300 mt-2"
-                            style={{ color: '#60A5FA !important' }}
+                            className="show-more-button"
                           >
                             Show More
                           </button>
@@ -640,8 +670,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
               {metadata.public_engagement && (
                 <div>
                   <button 
-                    className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors inline-flex items-center"
-                    style={{ minWidth: '200px', width: '100%' }}
+                    className="category-button"
                     onClick={() => setExpandedCategory(expandedCategory === 'public_engagement' ? null : 'public_engagement')}
                   >
                     <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Public Engagement</span>
@@ -658,8 +687,7 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
                         {!expandedEntries['public_engagement'] && (
                           <button
                             onClick={() => toggleEntryExpansion('public_engagement', 'public_engagement')}
-                            className="text-blue-400 hover:text-blue-300 mt-2"
-                            style={{ color: '#60A5FA !important' }}
+                            className="show-more-button"
                           >
                             Show More
                           </button>
