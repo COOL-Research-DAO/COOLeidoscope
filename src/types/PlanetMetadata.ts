@@ -40,7 +40,7 @@ export interface PlanetMetadata {
   }[];
   observational_data?: {
     data_sources: {
-      name: string;
+    name: string;
       url: string;
     }[];
     spectral_observations: {
