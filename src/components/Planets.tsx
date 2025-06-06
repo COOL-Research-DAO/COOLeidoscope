@@ -180,7 +180,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
   const getMoonOrbitRadius = () => {
     const baseOrbitRadius = (0.00256 / 206265); // Convert AU to parsecs
     const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1;
-    const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, 1 - (sizeScale - 1) / sliderRange)) : 0;
+    const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 1;
     // Scale up to Earth-Venus gap
     const maxOrbitRadius = getEarthVenusGap();
     return baseOrbitRadius * (1 + t * (maxOrbitRadius / baseOrbitRadius - 1));
@@ -206,7 +206,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
     
     // Apply the same scaling as planets
     const sliderRange = systemMaxScale > 1 ? systemMaxScale - 1 : 1;
-    const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, 1 - (sizeScale - 1) / sliderRange)) : 0;
+    const t = systemMaxScale > 1 ? Math.max(0, Math.min(1, (sizeScale - 1) / sliderRange)) : 1;
     const maxScale = 1_000_000; // Same cap as used for planets
     const scaledMoonOrbitRadius = moonOrbitRadius * (1 + t * maxScale);
     
@@ -306,11 +306,11 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
           // Increase contrast to make features more visible
           texColor = pow(texColor * 1.2, vec3(0.8));
           
-          // Apply day/night transition to texture
-          color = mix(texColor * ambientLight, texColor, t);
+          // Apply day/night transition to texture with significantly darker night side
+          color = mix(texColor * ambientLight * 0.8, texColor, t);
         } else {
-          // Use simple day/night color transition
-          color = mix(nightColor * ambientLight, dayColor, t);
+          // Use simple day/night color transition with significantly darker night side
+          color = mix(nightColor * ambientLight * 0.8, dayColor, t);
         }
         
         gl_FragColor = vec4(color, 1.0);
@@ -476,47 +476,34 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
             uniform float useTexture;
             uniform sampler2D planetTexture;
             varying vec3 vNormal;
-            varying vec3 vWorldPosition;
             varying vec2 vUv;
             
             void main() {
-              vec3 normal = normalize(vNormal);
-              vec3 lightDir = normalize(lightDirection);
+              // Calculate day-night transition based on angle to light source
+              float cosAngle = dot(normalize(vNormal), normalize(lightDirection));
               
-              // Calculate illumination (dot product)
-              float cosTheta = dot(normal, lightDir);
+              // Smooth transition between day and night sides
+              float dayFactor = smoothstep(-terminatorSharpness, terminatorSharpness, cosAngle);
               
-              // Create sharp terminator line perpendicular to light direction
-              float t = smoothstep(0.0, terminatorSharpness, cosTheta);
-              
-              // Determine final color based on whether we're using texture
               vec3 color;
               if (useTexture > 0.5) {
-                // Sample texture based on UV coordinates with proper filtering
-                vec4 texSample = texture2D(planetTexture, vUv);
-                vec3 texColor = texSample.rgb;
+                // Use texture if available
+                vec3 texColor = texture2D(planetTexture, vUv).rgb;
                 
                 // Increase brightness and contrast to make features more visible
                 texColor = pow(texColor * 1.2, vec3(0.8));
                 
-                // If texture sample is too dark (black areas), use the base color instead
-                float brightness = texColor.r + texColor.g + texColor.b;
-                if (brightness < 0.1) {
-                  texColor = dayColor;
-                }
-                
-                // Apply day/night transition to texture
-                color = mix(texColor * ambientLight, texColor, t);
+                // Apply day/night transition to texture with significantly darker night side
+                color = mix(texColor * ambientLight, texColor, dayFactor);
               } else {
-                // Use simple day/night color transition
-                color = mix(nightColor * ambientLight, dayColor, t);
+                // Use flat colors if no texture with significantly darker night side
+                color = mix(nightColor * ambientLight, dayColor, dayFactor);
               }
               
               gl_FragColor = vec4(color, 1.0);
             }
           `,
           transparent: false,
-          side: THREE.FrontSide,
           depthWrite: true,
           depthTest: true
         });
@@ -1212,7 +1199,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
                   handlePlanetDoubleClick(index); 
                 }}
                 userData={{ type: 'planet', hostname: system.hostname, index }}
-                renderOrder={2}
+                renderOrder={3}
               >
                 <sphereGeometry args={[planetSizes[index], 32, 32]} />
                 <primitive object={planetShaders.current[index]} />
@@ -1221,7 +1208,7 @@ export function Planets({ system, visible, isPaused, starRadius, sizeScale, syst
               {/* Saturn's rings */}
               {planet.pl_name?.toLowerCase().includes('saturn') && (
                 <group rotation={[Math.PI * 92.485 / 180, 0, 0]}>
-                  <mesh renderOrder={2}>
+                  <mesh renderOrder={3.1}>
                     <ringGeometry args={[planetSizes[index] * 1.2, planetSizes[index] * 2.3, 64]} />
                     <primitive object={saturnRingMaterial} />
                   </mesh>

@@ -1096,8 +1096,17 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       console.log('Number of systems:', systems.length);
       
       const searchLower = searchQuery.toLowerCase();
+      
+      // Handle special case for "Solar System" alias
+      const isSolarSystemSearch = searchLower.includes('solar') || searchLower === 'sun';
+      
       const matches = systems
         .filter(system => {
+          // Special case for Solar System
+          if (isSolarSystemSearch && system.hostname === 'Sun') {
+            return true;
+          }
+          
           const hostnameMatch = system.hostname.toLowerCase().includes(searchLower);
           const planetMatch = system.planets.some(planet => 
             planet.pl_name?.toLowerCase().includes(searchLower)
@@ -1105,6 +1114,12 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           return hostnameMatch || planetMatch;
         })
         .sort((a, b) => {
+          // Always put Sun first if searching for Solar System
+          if (isSolarSystemSearch) {
+            if (a.hostname === 'Sun') return -1;
+            if (b.hostname === 'Sun') return 1;
+          }
+          
           const aName = a.hostname.toLowerCase();
           const bName = b.hostname.toLowerCase();
           // Exact matches first
@@ -1136,8 +1151,16 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
       // Normalize search query: convert to lowercase and remove special characters except hyphens
       const searchNormalized = searchQuery.toLowerCase().replace(/[^a-z0-9-]/g, '');
       
+      // Handle special case for "Solar System" alias
+      const isSolarSystemSearch = searchNormalized.includes('solar') || searchNormalized === 'sun';
+      
       // Find the system
       const foundSystem = systems.find(system => {
+        // Special case for Solar System
+        if (isSolarSystemSearch && system.hostname === 'Sun') {
+          return true;
+        }
+        
         // Normalize system hostname the same way
         const hostnameNormalized = system.hostname.toLowerCase().replace(/[^a-z0-9-]/g, '');
         
