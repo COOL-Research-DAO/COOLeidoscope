@@ -2,9 +2,11 @@
 
 ## COOLeidoscope Code
 Development by COOL Research Labs in collaboration with the COOL Research DAO community.
-https://coolresearch.io
+Copyright (c) 2025 COOL Research Labs.
+Contributors: Mélanie Chevance, Diederik Kruijssen, Steve Longmore, Anna McLeod.
+License: MIT License - see the [LICENSE.md](./LICENSE.md) file for details.
 Available on GitHub: https://github.com/COOL-Research-DAO/COOLeidoscope
-License: 
+COOL Research DAO: https://coolresearch.io
 
 ## COOLeidoscope Data Sources
 
