@@ -237,6 +237,49 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
   const [expandedEntries, setExpandedEntries] = useState<ExpandedEntry>({});
   const [showGraph, setShowGraph] = useState<{ show: boolean; category: ExpandedCategory }>({ show: false, category: null });
 
+  // Function to parse HTML link and return React element
+  const parseReferenceLink = (htmlString: string) => {
+    if (!htmlString || htmlString === 'Unknown') return 'Not available';
+    
+    try {
+      // Extract href attribute
+      const hrefMatch = htmlString.match(/href=["']?([^"' >]+)/);
+      const href = hrefMatch ? hrefMatch[1] : '';
+      
+      // Extract link text
+      const textMatch = htmlString.match(/>([^<]+)<\/a>/);
+      let text = textMatch ? textMatch[1].trim() : 'Reference';
+      
+      // Decode HTML entities for accented characters
+      text = decodeHtmlEntities(text);
+      
+      if (href) {
+        return (
+          <a 
+            href={href} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            style={{ color: '#4da6ff', textDecoration: 'underline' }}
+          >
+            {text}
+          </a>
+        );
+      }
+      
+      return text;
+    } catch (e) {
+      console.error('Error parsing reference link:', e);
+      return htmlString;
+    }
+  };
+
+  // Function to decode HTML entities (like &eacute; to é)
+  const decodeHtmlEntities = (text: string): string => {
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = text;
+    return textarea.value;
+  };
+
   // Add style element to inject our CSS
   useEffect(() => {
     const styleElement = document.createElement('style');
@@ -347,8 +390,39 @@ export function PlanetInfoModal({ planet, onClose }: PlanetInfoModalProps) {
           <div className="mb-4">
             <h2 className="text-2xl font-bold" style={{ color: 'white !important' }}>{planet.pl_name}</h2>
           </div>
-          <div className="text-center py-8">
-            <p className="text-gray-400" style={{ color: '#9CA3AF !important' }}>{error}</p>
+          <div className="space-y-2" style={{ color: 'white !important' }}>
+            {/* Physical Properties */}
+            <div>
+              <button 
+                className="category-button"
+                onClick={() => setExpandedCategory(expandedCategory === 'physical_properties' ? null : 'physical_properties')}
+              >
+                <span className="font-semibold text-lg flex-1" style={{ color: 'white !important' }}>Physical Properties</span>
+                <span className="text-xl ml-2" style={{ 
+                  color: 'white !important',
+                  transform: expandedCategory === 'physical_properties' ? 'rotate(90deg)' : 'none',
+                  transition: 'transform 0.2s'
+                }}>›</span>
+              </button>
+              {expandedCategory === 'physical_properties' && (
+                <div className="mt-2 p-4 bg-gray-800 rounded-lg" style={{ color: 'white !important' }}>
+                  <div className="bg-gray-700 p-3 rounded mb-2">
+                    <div>
+                      <p className="text-white mt-2" style={{ color: 'white !important' }}>Radius: {planet.pl_rade ? `${planet.pl_rade.toFixed(2)} R⊕` : 'Unknown'}</p>
+                      <p className="text-white mt-2" style={{ color: 'white !important' }}>Mass: {planet.pl_masse ? `${planet.pl_masse.toFixed(2)} M⊕` : 'Unknown'}</p>
+                      <p className="text-white mt-2" style={{ color: 'white !important' }}>Density: {planet.pl_dens ? `${planet.pl_dens.toFixed(2)} g/cm³` : 'Unknown'}</p>
+                      <p className="text-white mt-2" style={{ color: 'white !important' }}>Orbital Period: {planet.pl_orbper ? `${planet.pl_orbper.toFixed(2)} days` : 'Unknown'}</p>
+                      <p className="text-white mt-2" style={{ color: 'white !important' }}>Semi-major Axis: {planet.pl_orbsmax ? `${planet.pl_orbsmax.toFixed(3)} AU` : 'Unknown'}</p>
+                      <p className="text-white mt-2" style={{ color: 'white !important' }}>Eccentricity: {planet.pl_orbeccen ? planet.pl_orbeccen.toFixed(3) : 'Unknown'}</p>
+                      <p className="text-white mt-2" style={{ color: 'white !important' }}>Discovery Method: {planet.discoverymethod || 'Unknown'}</p>
+                      <p className="text-white mt-2" style={{ color: 'white !important' }}>Discovery Year: {planet.disc_year || 'Unknown'}</p>
+                      <p className="text-white mt-2" style={{ color: 'white !important' }}>Discovery Reference: {parseReferenceLink(planet.disc_refname)}</p>
+                      <p className="text-white mt-2" style={{ color: 'white !important' }}>Planetary Parameter Reference: {parseReferenceLink(planet.pl_refname)}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -1444,6 +1444,9 @@ function ExoplanetScene({ gl }: { gl: THREE.WebGLRenderer }) {
           color: 'white',
           cursor: 'pointer',
           zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
         }}
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
